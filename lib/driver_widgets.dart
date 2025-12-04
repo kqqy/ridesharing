@@ -1,0 +1,273 @@
+import 'package:flutter/material.dart';
+import 'trip_model.dart';
+
+// ==========================================
+//  UI 元件：緊湊型輸入框
+// ==========================================
+class CompactTextField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final bool isNumber;
+  final bool readOnly;
+  final VoidCallback? onTap;
+
+  const CompactTextField({
+    super.key,
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.isNumber = false,
+    this.readOnly = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      readOnly: readOnly,
+      onTap: onTap,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, size: 20, color: Colors.grey),
+        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        isDense: true,
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  UI 元件：乘客列表單項 (長框)
+// ==========================================
+class PassengerListItem extends StatelessWidget {
+  final String name;
+  final int rating;
+
+  const PassengerListItem({super.key, required this.name, required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          Row(
+            children: List.generate(5, (index) {
+              return Icon(
+                index < rating ? Icons.star : Icons.star_border,
+                color: Colors.amber,
+                size: 20,
+              );
+            }),
+          ),
+          SizedBox(
+            height: 30,
+            child: OutlinedButton(
+              onPressed: () {},
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+              child: const Text('詳細', style: TextStyle(fontSize: 12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  UI 元件：行程卡片
+// ==========================================
+class TripCard extends StatelessWidget {
+  final Trip trip;
+  final Function(String) onMenuSelected;
+  final VoidCallback onDepart;
+  final VoidCallback onChat;
+
+  const TripCard({
+    super.key,
+    required this.trip,
+    required this.onMenuSelected,
+    required this.onDepart,
+    required this.onChat,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(color: Colors.grey.shade200, blurRadius: 4, offset: const Offset(0, 2))
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 行程資訊
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildInfoRow(Icons.my_location, '出發：${trip.origin}'),
+                const SizedBox(height: 8),
+                _buildInfoRow(Icons.flag, '目的：${trip.destination}'),
+                const SizedBox(height: 8),
+                _buildInfoRow(Icons.access_time, '時間：${trip.time}'),
+                const SizedBox(height: 8),
+                _buildInfoRow(Icons.event_seat, '剩餘座位：${trip.seats}'),
+              ],
+            ),
+          ),
+          // 功能區
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              PopupMenuButton<String>(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: const Icon(Icons.more_vert, color: Colors.grey),
+                onSelected: onMenuSelected,
+                itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                  const PopupMenuItem(value: '行程備註', child: Text('行程備註')),
+                  const PopupMenuItem(value: '編輯行程', child: Text('編輯行程')),
+                  const PopupMenuItem(value: '乘客管理', child: Text('乘客管理')),
+                ],
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                height: 32,
+                child: ElevatedButton(
+                  onPressed: onDepart,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('出發'),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 32,
+                child: OutlinedButton(
+                  onPressed: onChat,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    textStyle: const TextStyle(fontSize: 12),
+                  ),
+                  child: const Text('聊天室'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+//  UI 元件：三角形繪製 (Popover箭頭)
+// ==========================================
+class TrianglePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = Colors.white..style = PaintingStyle.fill;
+    final path = Path();
+    path.moveTo(size.width / 2, 0);
+    path.lineTo(0, size.height);
+    path.lineTo(size.width, size.height);
+    path.close();
+    canvas.drawShadow(path, Colors.black.withOpacity(0.1), 2.0, false);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// ==========================================
+//  UI 元件：SOS 視窗 (純介面)
+// ==========================================
+class SOSCountdownDialog extends StatelessWidget {
+  const SOSCountdownDialog({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Center(
+        child: Text(
+          '確定要撥打求救電話?',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+        ),
+      ),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '倒數 2 秒',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.redAccent),
+          ),
+        ],
+      ),
+      actions: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: const Text('確定'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
+              child: const Text('取消'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
