@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'trip_model.dart';
 
 // ==========================================
-//  UI 元件：緊湊型輸入框
+//  1. 緊湊型輸入框 (CompactTextField)
 // ==========================================
 class CompactTextField extends StatelessWidget {
   final TextEditingController controller;
@@ -41,13 +41,19 @@ class CompactTextField extends StatelessWidget {
 }
 
 // ==========================================
-//  UI 元件：乘客列表單項 (長框)
+//  2. 乘客列表單項 (PassengerListItem)
 // ==========================================
 class PassengerListItem extends StatelessWidget {
   final String name;
   final int rating;
+  final VoidCallback onTapDetails; 
 
-  const PassengerListItem({super.key, required this.name, required this.rating});
+  const PassengerListItem({
+    super.key,
+    required this.name,
+    required this.rating,
+    required this.onTapDetails,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -75,7 +81,7 @@ class PassengerListItem extends StatelessWidget {
           SizedBox(
             height: 30,
             child: OutlinedButton(
-              onPressed: () {},
+              onPressed: onTapDetails,
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -90,7 +96,7 @@ class PassengerListItem extends StatelessWidget {
 }
 
 // ==========================================
-//  UI 元件：行程卡片
+//  3. 行程卡片 (TripCard)
 // ==========================================
 class TripCard extends StatelessWidget {
   final Trip trip;
@@ -122,7 +128,6 @@ class TripCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 行程資訊
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,7 +142,6 @@ class TripCard extends StatelessWidget {
               ],
             ),
           ),
-          // 功能區
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -199,17 +203,14 @@ class TripCard extends StatelessWidget {
 }
 
 // ==========================================
-//  UI 元件：三角形繪製 (Popover箭頭)
+//  4. 繪製三角形 (Popover箭頭)
 // ==========================================
 class TrianglePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = Colors.white..style = PaintingStyle.fill;
     final path = Path();
-    path.moveTo(size.width / 2, 0);
-    path.lineTo(0, size.height);
-    path.lineTo(size.width, size.height);
-    path.close();
+    path.moveTo(size.width / 2, 0); path.lineTo(0, size.height); path.lineTo(size.width, size.height); path.close();
     canvas.drawShadow(path, Colors.black.withOpacity(0.1), 2.0, false);
     canvas.drawPath(path, paint);
   }
@@ -219,7 +220,7 @@ class TrianglePainter extends CustomPainter {
 }
 
 // ==========================================
-//  UI 元件：SOS 視窗 (純介面)
+//  5. SOS 視窗 (純介面)
 // ==========================================
 class SOSCountdownDialog extends StatelessWidget {
   const SOSCountdownDialog({super.key});
@@ -238,7 +239,7 @@ class SOSCountdownDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            '倒數 2 秒',
+            '倒數 2 秒', 
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.redAccent),
           ),
         ],
@@ -268,6 +269,52 @@ class SOSCountdownDialog extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+// ==========================================
+//  6. 乘客詳細資料視窗內容 (NEW)
+// ==========================================
+class PassengerDetailsContent extends StatelessWidget {
+  final String name;
+  final int rating;
+  
+  const PassengerDetailsContent({super.key, required this.name, required this.rating});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool hasViolation = name == '乘客 1';
+    final String violationText = hasViolation ? '有惡意取消行程紀錄' : '無違規紀錄';
+    final Color violationColor = hasViolation ? Colors.red : Colors.grey;
+
+    return Container(
+      padding: const EdgeInsets.all(10), // 內部小間距
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. 星等
+          const Text('星等：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 5),
+          Row(
+            children: List.generate(5, (index) => Icon(
+              index < rating ? Icons.star : Icons.star_border,
+              color: Colors.amber,
+              size: 24,
+            )),
+          ),
+          
+          // 2. 違規紀錄
+          const SizedBox(height: 20),
+          const Text('違規紀錄：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(
+            violationText,
+            style: TextStyle(color: violationColor, fontSize: 16),
+          ),
+        ],
+      ),
     );
   }
 }
