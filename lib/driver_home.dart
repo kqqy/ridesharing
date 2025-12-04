@@ -11,25 +11,23 @@ class DriverHome extends StatefulWidget {
 }
 
 class _DriverHomeState extends State<DriverHome> {
-  // ==========================================
-  //  1. 狀態變數與控制器 (State & Controllers)
-  //  這裡負責存資料、控制視窗開關、還有輸入框的文字
-  // ==========================================
-  
-  bool _showCreateForm = false; // 控制「左邊」創建行程視窗
-  bool _showManageMenu = false; // 控制「右邊」行程管理選單
+  // 狀態變數
+  bool _showCreateForm = false; 
+  bool _showManageMenu = false; 
 
-  // 存放行程的清單 (資料庫)
+  // ✨ 新增：目前正在進行的行程 (null 代表閒置)
+  Trip? _currentActiveTrip;
+
+  // 存放行程的清單
   final List<Trip> _upcomingTrips = [];
 
-  // 輸入框控制器 (給「創建行程」表單用的)
+  // 輸入框控制器
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _timeController = TextEditingController();
   final TextEditingController _seatsController = TextEditingController();
   final TextEditingController _noteController = TextEditingController();
 
-  // 關閉所有浮動視窗的函式
   void _closeAllDialogs() {
     if (_showCreateForm || _showManageMenu) {
       setState(() {
@@ -39,97 +37,78 @@ class _DriverHomeState extends State<DriverHome> {
     }
   }
 
-  // ==========================================
-  //  2. 頁面主體 (Main Build)
-  //  這裡使用 Stack (堆疊) 來讓視窗可以浮在按鈕上面
-  // ==========================================
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: _closeAllDialogs, // 點擊空白處關閉視窗
+      onTap: _closeAllDialogs,
       behavior: HitTestBehavior.translucent,
       child: Stack(
         children: [
-          // --- A. 底層背景 (只有圖示和文字) ---
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(30),
-                  decoration: BoxDecoration(
-                    color: widget.themeColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.drive_eta_rounded, size: 80, color: widget.themeColor),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  '目前還沒有行程',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
+          // 1. 底層內容 (閒置介面 or 導航介面)
+          _currentActiveTrip != null 
+              ? _buildActiveTripUI() // 行程進行中
+              : _buildIdleUI(),      // 閒置中
 
-          // --- B. 左上角按鈕：創建行程 ---
-          Positioned(
-            top: 20,
-            left: 20,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showCreateForm = !_showCreateForm;
-                  _showManageMenu = false; // 互斥：關右邊
-                });
-              },
-              icon: const Icon(Icons.add_location_alt),
-              label: const Text('創建行程'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.green[700],
-                elevation: 2,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          // 2. 左上按鈕 (只有閒置時顯示)
+          if (_currentActiveTrip == null)
+            Positioned(
+              top: 20,
+              left: 20,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showCreateForm = !_showCreateForm;
+                    _showManageMenu = false;
+                  });
+                },
+                icon: const Icon(Icons.add_location_alt),
+                label: const Text('創建行程'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.green[700],
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
               ),
             ),
-          ),
 
-          // --- C. 右上角按鈕：行程管理 ---
-          Positioned(
-            top: 20,
-            right: 20,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showManageMenu = !_showManageMenu;
-                  _showCreateForm = false; // 互斥：關左邊
-                });
-              },
-              icon: const Icon(Icons.edit_calendar),
-              label: const Text('行程管理'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.green[700],
-                elevation: 2,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          // 3. 右上按鈕 (只有閒置時顯示)
+          if (_currentActiveTrip == null)
+            Positioned(
+              top: 20,
+              right: 20,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showManageMenu = !_showManageMenu;
+                    _showCreateForm = false;
+                  });
+                },
+                icon: const Icon(Icons.edit_calendar),
+                label: const Text('行程管理'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.green[700],
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
               ),
             ),
-          ),
 
-          // --- D. 左邊浮動視窗：創建行程表單 ---
+          // 4. 左邊視窗
           if (_showCreateForm)
             Positioned(
               top: 70,
               left: 20,
-              child: _buildCreateTripForm(), // 呼叫下方定義的表單
+              child: _buildCreateTripForm(),
             ),
 
-          // --- E. 右邊浮動視窗：行程管理選單 ---
+          // 5. 右邊視窗
           if (_showManageMenu)
             Positioned(
               top: 70,
               right: 20,
-              child: _buildManageMenu(), // 呼叫下方定義的選單
+              child: _buildManageMenu(),
             ),
         ],
       ),
@@ -137,21 +116,193 @@ class _DriverHomeState extends State<DriverHome> {
   }
 
   // ==========================================
-  //  3. 浮動選單與表單 (Popover Menus)
-  //  這些是直接顯示在畫面上的小視窗 (不是 Dialog)
+  //  介面：閒置狀態 (無行程)
   // ==========================================
+  Widget _buildIdleUI() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(30),
+            decoration: BoxDecoration(
+              color: widget.themeColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.drive_eta_rounded, size: 80, color: widget.themeColor),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            '目前還沒有行程',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
 
-  // 右邊的「行程管理」選單
+  // ==========================================
+  //  介面：行程執行中 (導航/求助)
+  // ==========================================
+  Widget _buildActiveTripUI() {
+    if (_currentActiveTrip == null) return Container();
+
+    return Container(
+      color: Colors.grey[100],
+      padding: const EdgeInsets.all(20),
+      child: Center(
+        child: Container(
+          width: double.infinity,
+          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                spreadRadius: 2,
+              )
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 目的地
+              Row(
+                children: [
+                  const Icon(Icons.flag, color: Colors.red),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '目的地：${_currentActiveTrip!.destination}',
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Google Map 區
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade400),
+                  ),
+                  child: const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.map, size: 50, color: Colors.grey),
+                        SizedBox(height: 10),
+                        Text('Google Map 預留區', style: TextStyle(color: Colors.grey, fontSize: 18)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // 路徑偏移 & 求助
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Colors.red),
+                      SizedBox(width: 5),
+                      Text('路徑偏移', style: TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已發送求助訊號！'), backgroundColor: Colors.red));
+                    },
+                    icon: const Icon(Icons.sos, color: Colors.white),
+                    label: const Text('一鍵求助'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // 改成 12
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // 分享 & 已到達
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('分享行程連結...')));
+                    },
+                    icon: const Icon(Icons.share),
+                    label: const Text('分享行程'),
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // 改成 12
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                    ),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('確認到達？'),
+                          content: const Text('這將結束目前的行程。'),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                setState(() {
+                                  _currentActiveTrip = null; // 結束行程
+                                });
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程已結束')));
+                              },
+                              child: const Text('確定到達'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.check_circle),
+                    label: const Text('已到達'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), // 改成 12
+                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                      textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Helper Widgets (浮動視窗們) ---
+
   Widget _buildManageMenu() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        // 小三角形 (指向按鈕)
         Padding(
           padding: const EdgeInsets.only(right: 40.0),
           child: CustomPaint(painter: TrianglePainter(), size: const Size(20, 10)),
         ),
-        // 白色選單本體
         Container(
           width: 200,
           decoration: BoxDecoration(
@@ -166,7 +317,7 @@ class _DriverHomeState extends State<DriverHome> {
                 title: const Text('即將出發行程'),
                 onTap: () {
                   setState(() => _showManageMenu = false);
-                  _showUpcomingTripsDialog(); // 跳轉：即將出發
+                  _showUpcomingTripsDialog();
                 },
               ),
               const Divider(height: 1),
@@ -175,7 +326,7 @@ class _DriverHomeState extends State<DriverHome> {
                 title: const Text('歷史行程'),
                 onTap: () {
                   setState(() => _showManageMenu = false);
-                  _showHistoryTripsDialog(); // 跳轉：歷史行程
+                  _showHistoryTripsDialog();
                 },
               ),
             ],
@@ -185,98 +336,6 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // 左邊的「創建行程」表單
-  Widget _buildCreateTripForm() {
-    double screenWidth = MediaQuery.of(context).size.width;
-    double formWidth = screenWidth - 40;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: 40.0),
-          child: CustomPaint(painter: TrianglePainter(), size: const Size(20, 10)),
-        ),
-        Container(
-          width: formWidth,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))]),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 5),
-              _buildCompactTextField(_originController, '出發地', Icons.my_location),
-              const SizedBox(height: 10),
-              _buildCompactTextField(_destinationController, '目的地', Icons.flag),
-              const SizedBox(height: 10),
-              // 時間選擇器
-              _buildCompactTextField(_timeController, '出發時間', Icons.access_time, readOnly: true, onTap: () async {
-                 DateTime? pickedDate = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2100));
-                 if (pickedDate == null) return;
-                 if (!mounted) return;
-                 TimeOfDay? pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                 if (pickedTime == null) return;
-                 String formattedDate = "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
-                 String formattedTime = "${pickedTime.hour.toString().padLeft(2, '0')}:${pickedTime.minute.toString().padLeft(2, '0')}";
-                 setState(() { _timeController.text = "$formattedDate $formattedTime"; });
-              }),
-              const SizedBox(height: 15),
-              // 可乘座位
-              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-                const Text('可乘座位數', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(width: 15),
-                SizedBox(width: 50, child: TextField(controller: _seatsController, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true))),
-              ]),
-              const SizedBox(height: 15),
-              // 備註
-              const Text('備註', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 8),
-              TextField(controller: _noteController, decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true)),
-              const SizedBox(height: 20),
-              // 創建按鈕
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {
-                    if (_originController.text.isNotEmpty && _destinationController.text.isNotEmpty) {
-                      setState(() {
-                        _upcomingTrips.add(Trip(
-                          origin: _originController.text,
-                          destination: _destinationController.text,
-                          time: _timeController.text,
-                          seats: _seatsController.text,
-                          note: _noteController.text,
-                        ));
-                        _showCreateForm = false;
-                      });
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程創建成功！請至行程管理查看'), backgroundColor: Colors.green));
-                      _originController.clear();
-                      _destinationController.clear();
-                      _timeController.clear();
-                      _seatsController.clear();
-                      _noteController.clear();
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請填寫完整資訊'), backgroundColor: Colors.red));
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white),
-                  child: const Text('創建行程'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ==========================================
-  //  4. 彈出視窗 (Dialogs)
-  //  這些是背景會變暗，跳出來的視窗
-  // ==========================================
-
-  // --- 即將出發行程 ---
   void _showUpcomingTripsDialog() {
     double screenHeight = MediaQuery.of(context).size.height;
     double dialogHeight = screenHeight * 0.66;
@@ -322,44 +381,6 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // --- 歷史行程 ---
-  void _showHistoryTripsDialog() {
-    double screenHeight = MediaQuery.of(context).size.height;
-    double dialogHeight = screenHeight * 0.66;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            height: dialogHeight,
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('歷史行程', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.grey),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                const Expanded(
-                  child: Center(child: Text('目前沒有歷史行程', style: TextStyle(fontSize: 16, color: Colors.grey))),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  // --- 行程備註 (唯讀) ---
   void _showNoteDialog(String note) {
     showDialog(
       context: context,
@@ -404,7 +425,6 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // --- 編輯行程選項 (修改/取消) ---
   void _showEditOptionsDialog(Trip trip, int index, StateSetter setStateDialog) {
     showDialog(
       context: context,
@@ -434,7 +454,6 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // --- 修改行程表單 ---
   void _showModifyTripForm(Trip trip, int index, StateSetter setStateDialog) {
     final editOrigin = TextEditingController(text: trip.origin);
     final editDestination = TextEditingController(text: trip.destination);
@@ -510,7 +529,6 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // --- 取消行程確認 ---
   void _showDeleteConfirmDialog(int index, StateSetter setStateDialog) {
     showDialog(
       context: context,
@@ -540,10 +558,44 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // --- 乘客管理 (自動審核 + 乘客清單) ---
+  void _showHistoryTripsDialog() {
+    double screenHeight = MediaQuery.of(context).size.height;
+    double dialogHeight = screenHeight * 0.66;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            height: dialogHeight,
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('歷史行程', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.grey),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const Divider(),
+                const Expanded(
+                  child: Center(child: Text('目前沒有歷史行程', style: TextStyle(fontSize: 16, color: Colors.grey))),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showPassengerManagementDialog(BuildContext context) {
     bool isAutoApprove = false;
-
     showDialog(
       context: context,
       builder: (context) {
@@ -563,12 +615,11 @@ class _DriverHomeState extends State<DriverHome> {
                     });
                   },
                 ),
-                
                 SimpleDialogOption(
                   padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
                   onPressed: () {
                     Navigator.pop(context);
-                    _showPassengerListDialog(); // ✨ 點擊後跳出清單
+                    _showPassengerListDialog();
                   },
                   child: const Text('乘客清單', style: TextStyle(fontSize: 16)),
                 ),
@@ -580,10 +631,9 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // --- ✨ 新增：乘客清單視窗 ---
   void _showPassengerListDialog() {
     double screenHeight = MediaQuery.of(context).size.height;
-    double dialogHeight = screenHeight * 0.66; // 佔 2/3 高度
+    double dialogHeight = screenHeight * 0.66;
 
     showDialog(
       context: context,
@@ -595,7 +645,6 @@ class _DriverHomeState extends State<DriverHome> {
             height: dialogHeight,
             child: Column(
               children: [
-                // 標題列
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -607,14 +656,9 @@ class _DriverHomeState extends State<DriverHome> {
                   ],
                 ),
                 const Divider(),
-                
-                // 內容區
                 const Expanded(
                   child: Center(
-                    child: Text(
-                      '目前還沒有乘客',
-                      style: TextStyle(fontSize: 16, color: Colors.grey),
-                    ),
+                    child: Text('目前還沒有乘客', style: TextStyle(fontSize: 16, color: Colors.grey)),
                   ),
                 ),
               ],
@@ -624,11 +668,6 @@ class _DriverHomeState extends State<DriverHome> {
       },
     );
   }
-
-  // ==========================================
-  //  5. 小元件 (Widgets)
-  //  這裡放的是重複使用的小零件 (如方框、輸入框)
-  // ==========================================
 
   Widget _buildTripCard(Trip trip, int index, StateSetter setStateDialog) {
     return Container(
@@ -685,7 +724,13 @@ class _DriverHomeState extends State<DriverHome> {
               SizedBox(
                 height: 32,
                 child: ElevatedButton(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程出發！'))),
+                  onPressed: () {
+                    Navigator.pop(context); // 關閉清單視窗
+                    setState(() {
+                      _currentActiveTrip = trip; // 開始行程
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程開始！祝您一路順風'), backgroundColor: Colors.green));
+                  },
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 12), textStyle: const TextStyle(fontSize: 12)),
                   child: const Text('出發'),
                 ),
@@ -712,6 +757,87 @@ class _DriverHomeState extends State<DriverHome> {
         Icon(icon, size: 16, color: Colors.grey[600]),
         const SizedBox(width: 6),
         Expanded(child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis)),
+      ],
+    );
+  }
+
+  Widget _buildCreateTripForm() {
+    double screenWidth = MediaQuery.of(context).size.width;
+    double formWidth = screenWidth - 40;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 40.0),
+          child: CustomPaint(painter: TrianglePainter(), size: const Size(20, 10)),
+        ),
+        Container(
+          width: formWidth,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))]),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 5),
+              _buildCompactTextField(_originController, '出發地', Icons.my_location),
+              const SizedBox(height: 10),
+              _buildCompactTextField(_destinationController, '目的地', Icons.flag),
+              const SizedBox(height: 10),
+              _buildCompactTextField(_timeController, '出發時間', Icons.access_time, readOnly: true, onTap: () async {
+                 DateTime? pickedDate = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2100));
+                 if (pickedDate == null) return;
+                 if (!mounted) return;
+                 TimeOfDay? pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                 if (pickedTime == null) return;
+                 String formattedDate = "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')}";
+                 String formattedTime = "${pickedTime.hour.toString().padLeft(2, '0')}:${pickedTime.minute.toString().padLeft(2, '0')}";
+                 setState(() { _timeController.text = "$formattedDate $formattedTime"; });
+              }),
+              const SizedBox(height: 15),
+              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+                const Text('可乘座位數', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                const SizedBox(width: 15),
+                SizedBox(width: 50, child: TextField(controller: _seatsController, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true))),
+              ]),
+              const SizedBox(height: 15),
+              const Text('備註', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 8),
+              TextField(controller: _noteController, decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true)),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    if (_originController.text.isNotEmpty && _destinationController.text.isNotEmpty) {
+                      setState(() {
+                        _upcomingTrips.add(Trip(
+                          origin: _originController.text,
+                          destination: _destinationController.text,
+                          time: _timeController.text,
+                          seats: _seatsController.text,
+                          note: _noteController.text,
+                        ));
+                        _showCreateForm = false;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('行程創建成功！請至行程管理查看'), backgroundColor: Colors.green));
+                      _originController.clear();
+                      _destinationController.clear();
+                      _timeController.clear();
+                      _seatsController.clear();
+                      _noteController.clear();
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請填寫完整資訊'), backgroundColor: Colors.red));
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white),
+                  child: const Text('創建行程'),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
