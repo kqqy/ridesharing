@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'trip_model.dart';
+import 'trip_model.dart'; // 引入資料結構
 
 // ==========================================
-//  1. 緊湊型輸入框 (CompactTextField)
+//  UI 元件：緊湊型輸入框 (CompactTextField)
 // ==========================================
 class CompactTextField extends StatelessWidget {
   final TextEditingController controller;
@@ -41,12 +41,13 @@ class CompactTextField extends StatelessWidget {
 }
 
 // ==========================================
-//  2. 乘客列表單項 (PassengerListItem)
+//  UI 元件：乘客列表單項 (PassengerListItem)
+//  負責顯示名字、星等、和詳細按鈕
 // ==========================================
 class PassengerListItem extends StatelessWidget {
   final String name;
   final int rating;
-  final VoidCallback onTapDetails; 
+  final VoidCallback onTapDetails; // 點擊詳細按鈕的回呼
 
   const PassengerListItem({
     super.key,
@@ -97,12 +98,13 @@ class PassengerListItem extends StatelessWidget {
 
 // ==========================================
 //  3. 行程卡片 (TripCard)
+//  負責顯示單一行程資訊和三個按鈕
 // ==========================================
 class TripCard extends StatelessWidget {
   final Trip trip;
-  final Function(String) onMenuSelected;
-  final VoidCallback onDepart;
-  final VoidCallback onChat;
+  final Function(String) onMenuSelected; // 菜單點擊回呼
+  final VoidCallback onDepart; // 出發按鈕回呼
+  final VoidCallback onChat; // 聊天室按鈕回呼
 
   const TripCard({
     super.key,
@@ -203,7 +205,47 @@ class TripCard extends StatelessWidget {
 }
 
 // ==========================================
-//  4. 繪製三角形 (Popover箭頭)
+//  4. 乘客管理視窗內容 (包含開關和按鈕)
+// ==========================================
+class PassengerManagementContent extends StatelessWidget {
+  final bool isAutoApprove;
+  final ValueChanged<bool> onSwitchToggle;
+  final VoidCallback onListTap;
+
+  const PassengerManagementContent({
+    super.key,
+    required this.isAutoApprove,
+    required this.onSwitchToggle,
+    required this.onListTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SimpleDialog(
+      contentPadding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        // 選項 1: 自動審核 (開關)
+        SwitchListTile(
+          title: const Text('自動審核', style: TextStyle(fontSize: 16)),
+          value: isAutoApprove,
+          activeColor: Colors.blue,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 24),
+          onChanged: onSwitchToggle,
+        ),
+        
+        // 選項 2: 乘客清單 (按鈕)
+        SimpleDialogOption(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          onPressed: onListTap,
+          child: const Text('乘客清單', style: TextStyle(fontSize: 16)),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+//  5. 繪製三角形 (Popover箭頭)
 // ==========================================
 class TrianglePainter extends CustomPainter {
   @override
@@ -220,7 +262,7 @@ class TrianglePainter extends CustomPainter {
 }
 
 // ==========================================
-//  5. SOS 視窗 (純介面)
+//  6. SOS 視窗 (純介面)
 // ==========================================
 class SOSCountdownDialog extends StatelessWidget {
   const SOSCountdownDialog({super.key});
@@ -274,7 +316,145 @@ class SOSCountdownDialog extends StatelessWidget {
 }
 
 // ==========================================
-//  6. 乘客詳細資料視窗內容 (NEW)
+//  7. 乘客評價卡片
+// ==========================================
+class RatePassengerCard extends StatefulWidget {
+  final String name;
+  final int initialRating;
+  final int passengerIndex;
+
+  const RatePassengerCard({
+    super.key,
+    required this.name,
+    required this.initialRating,
+    required this.passengerIndex,
+  });
+
+  @override
+  State<RatePassengerCard> createState() => _RatePassengerCardState();
+}
+
+class _RatePassengerCardState extends State<RatePassengerCard> {
+  int _rating = 5; 
+  bool _isPolite = true;
+  bool _isPunctual = true;
+  final TextEditingController _commentController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _rating = widget.initialRating; 
+  }
+
+  Widget _buildToggleRow(String title, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 16)),
+        Row(
+          children: [
+            // 是
+            Checkbox(
+              value: value,
+              onChanged: (newValue) => onChanged(true),
+              activeColor: Colors.green,
+            ),
+            const Text('是'),
+            const SizedBox(width: 10),
+            // 否
+            Checkbox(
+              value: !value,
+              onChanged: (newValue) => onChanged(false),
+              activeColor: Colors.red,
+            ),
+            const Text('否'),
+          ],
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 姓名與星等
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${widget.name}',
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                // 星等顯示與點擊
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: List.generate(5, (index) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 1.0),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _rating = index + 1;
+                          });
+                        },
+                        child: Icon(
+                          index < _rating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 24,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+            const Divider(height: 20),
+
+            // 1. 是否準時 (Checkboxes)
+            _buildToggleRow('是否準時', _isPunctual, (val) => setState(() => _isPunctual = val)),
+            const SizedBox(height: 10),
+
+            // 2. 是否禮貌 (Checkboxes)
+            _buildToggleRow('是否禮貌', _isPolite, (val) => setState(() => _isPolite = val)),
+            const SizedBox(height: 20),
+
+            // 3. 評論區
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('評論', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(width: 15),
+                Expanded(
+                  child: TextField(
+                    controller: _commentController,
+                    maxLines: 4,
+                    decoration: InputDecoration(
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      hintText: '輸入你的評論...',
+                      isDense: true,
+                      contentPadding: const EdgeInsets.all(10),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  8. 乘客詳細資料視窗內容
 // ==========================================
 class PassengerDetailsContent extends StatelessWidget {
   final String name;
@@ -289,14 +469,26 @@ class PassengerDetailsContent extends StatelessWidget {
     final Color violationColor = hasViolation ? Colors.red : Colors.grey;
 
     return Container(
-      padding: const EdgeInsets.all(10), // 內部小間距
+      padding: const EdgeInsets.all(10),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('$name 的詳細資料', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.grey),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const Divider(),
+          
           // 1. 星等
+          const SizedBox(height: 15),
           const Text('星等：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 5),
           Row(
             children: List.generate(5, (index) => Icon(
               index < rating ? Icons.star : Icons.star_border,
@@ -313,6 +505,7 @@ class PassengerDetailsContent extends StatelessWidget {
             violationText,
             style: TextStyle(color: violationColor, fontSize: 16),
           ),
+          const SizedBox(height: 10),
         ],
       ),
     );
