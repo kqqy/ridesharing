@@ -1,34 +1,16 @@
 import 'package:flutter/material.dart';
+import 'passenger_widgets.dart'; // 引入乘客的 UI 組件
 
+// 乘客 Home Page (僅作為頁面容器)
 class PassengerHome extends StatelessWidget {
   final Color themeColor;
 
+  // 接收從 home_page.dart 傳來的顏色參數
   const PassengerHome({super.key, required this.themeColor});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(30),
-              decoration: BoxDecoration(
-                color: themeColor.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.person_rounded, size: 80, color: themeColor),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              '目前還沒有行程',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
-    );
+    // 邏輯：直接回傳 UI 主體，不持有任何狀態
+    return PassengerHomeBody(themeColor: themeColor);
   }
 }
