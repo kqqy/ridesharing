@@ -8,12 +8,10 @@ class PassengerHomeBody extends StatelessWidget {
   final Color themeColor;
   final VoidCallback onManageTripTap;
   
-  // 探索行程的資料與操作
   final List<Trip> exploreTrips; 
   final Function(Trip) onExploreDetail;
   final Function(Trip) onExploreJoin;
   
-  // 點擊右下角 FAB 的回呼
   final VoidCallback onCreateTrip; 
 
   const PassengerHomeBody({
@@ -37,19 +35,18 @@ class PassengerHomeBody extends StatelessWidget {
         toolbarHeight: 0,
       ),
       
-      // 右下角懸浮按鈕
       floatingActionButton: FloatingActionButton(
         onPressed: onCreateTrip,
         backgroundColor: Colors.blue,
         elevation: 4,
-        shape: const CircleBorder(), // 確保是圓形
+        shape: const CircleBorder(),
         child: const Icon(Icons.add, color: Colors.white, size: 30),
       ),
       
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // --- HEADER: 標題與按鈕 ---
+          // HEADER
           Padding(
             padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 10),
             child: Row(
@@ -79,12 +76,11 @@ class PassengerHomeBody extends StatelessWidget {
             ),
           ),
 
-          // --- [修改] 搜尋區塊：移除箭頭，簡化文字 ---
+          // 搜尋區塊
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
             child: Row(
               children: [
-                // 1. 出發地
                 Expanded(
                   child: Container(
                     height: 45,
@@ -94,7 +90,7 @@ class PassengerHomeBody extends StatelessWidget {
                     ),
                     child: const TextField(
                       decoration: InputDecoration(
-                        hintText: '出發地', // [修改] 簡化文字
+                        hintText: '出發地',
                         hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
                         prefixIcon: Icon(Icons.circle_outlined, color: Colors.grey, size: 18),
                         border: InputBorder.none,
@@ -104,10 +100,8 @@ class PassengerHomeBody extends StatelessWidget {
                   ),
                 ),
                 
-                // [修改] 移除箭頭，改用間距
                 const SizedBox(width: 12),
 
-                // 2. 目的地
                 Expanded(
                   child: Container(
                     height: 45,
@@ -117,7 +111,7 @@ class PassengerHomeBody extends StatelessWidget {
                     ),
                     child: const TextField(
                       decoration: InputDecoration(
-                        hintText: '目的地', // [修改] 簡化文字
+                        hintText: '目的地',
                         hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
                         prefixIcon: Icon(Icons.location_on_outlined, color: Colors.grey, size: 18),
                         border: InputBorder.none,
@@ -132,7 +126,6 @@ class PassengerHomeBody extends StatelessWidget {
           
           const SizedBox(height: 10), 
 
-          // --- 核心內容區 (列表) ---
           Expanded(
             child: exploreTrips.isEmpty
                 ? _buildEmptyState() 
@@ -143,7 +136,6 @@ class PassengerHomeBody extends StatelessWidget {
     );
   }
 
-  // 小工具：顯示列表
   Widget _buildExploreList() {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -161,7 +153,6 @@ class PassengerHomeBody extends StatelessWidget {
     );
   }
 
-  // 小工具：顯示空狀態
   Widget _buildEmptyState() {
     return Center(
       child: Column(
@@ -192,6 +183,7 @@ class PassengerHomeBody extends StatelessWidget {
 
 // ==========================================
 //  2. 乘客行程管理選單
+//  [修改] 將 "歷史行程" 改為 "歷史行程與統計"
 // ==========================================
 class PassengerTripMenu extends StatelessWidget {
   final VoidCallback onUpcomingTap; 
@@ -238,8 +230,10 @@ class PassengerTripMenu extends StatelessWidget {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.history, color: Colors.grey),
-                title: const Text('歷史行程'),
-                onTap: onHistoryTap,
+                // [修改] 顯示文字
+                title: const Text('歷史行程與統計'),
+                // [修改] 傳遞給邏輯層的字串
+                onTap: () => onHistoryTap(), // 這裡傳遞的函式通常會帶字串給 _handleMenuSelection
               ),
             ],
           ),
@@ -258,6 +252,9 @@ class PassengerTripCard extends StatelessWidget {
   final VoidCallback? onJoin;   
   final VoidCallback? onCancel; 
   final VoidCallback? onChat;   
+  
+  final VoidCallback? onDepart; 
+  final String cancelText;      
 
   const PassengerTripCard({
     super.key,
@@ -266,6 +263,8 @@ class PassengerTripCard extends StatelessWidget {
     this.onJoin,
     this.onCancel,
     this.onChat,
+    this.onDepart,
+    this.cancelText = '取消',
   });
 
   Widget _buildInfoRow(IconData icon, String text) {
@@ -360,7 +359,25 @@ class PassengerTripCard extends StatelessWidget {
                     child: const Text('聊天室'),
                   ),
                 ),
+                if (onDepart != null) ...[
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 32,
+                    child: OutlinedButton(
+                      onPressed: onDepart,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.green,
+                        side: const BorderSide(color: Colors.green),
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                      child: const Text('出發'),
+                    ),
+                  ),
+                ],
+
                 const SizedBox(width: 8),
+                
                 SizedBox(
                   height: 32,
                   child: OutlinedButton(
@@ -371,7 +388,7 @@ class PassengerTripCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       textStyle: const TextStyle(fontSize: 12),
                     ),
-                    child: const Text('取消'),
+                    child: Text(cancelText),
                   ),
                 ),
               ],
@@ -384,153 +401,8 @@ class PassengerTripCard extends StatelessWidget {
 }
 
 // ==========================================
-//  4. 行程詳細資訊視窗
+//  4. 即將出發行程列表內容 (Page 內容)
 // ==========================================
-class PassengerTripDetailsDialog extends StatelessWidget {
-  final Trip trip;
-  final List<Map<String, dynamic>> members; 
-
-  const PassengerTripDetailsDialog({
-    super.key,
-    required this.trip,
-    required this.members,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text('行程詳細資訊', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                IconButton(
-                  icon: const Icon(Icons.close, color: Colors.grey),
-                  onPressed: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const Divider(),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      height: 150,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade400),
-                      ),
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.map, size: 40, color: Colors.grey),
-                            SizedBox(height: 8),
-                            Text('Google Map 路線預覽', style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildSectionTitle('行程資訊'),
-                    const SizedBox(height: 8),
-                    _buildDetailItem(Icons.my_location, '出發地', trip.origin),
-                    _buildDetailItem(Icons.flag, '目的地', trip.destination),
-                    _buildDetailItem(Icons.access_time, '出發時間', trip.time),
-                    _buildDetailItem(Icons.event_seat, '剩餘座位', trip.seats),
-                    _buildDetailItem(Icons.note, '備註', trip.note.isEmpty ? '無' : trip.note),
-                    const SizedBox(height: 20),
-                    _buildSectionTitle('成員列表'),
-                    const SizedBox(height: 8),
-                    ...members.map((member) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: member['role'] == '司機' ? Colors.blue[100] : Colors.orange[100],
-                            radius: 18,
-                            child: Icon(
-                              member['role'] == '司機' ? Icons.drive_eta : Icons.person,
-                              size: 20,
-                              color: member['role'] == '司機' ? Colors.blue : Colors.orange,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(member['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Text(member['role'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              const Icon(Icons.star, size: 16, color: Colors.amber),
-                              const SizedBox(width: 4),
-                              Text(
-                                member['rating'].toString(),
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    )),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
-    );
-  }
-
-  Widget _buildDetailItem(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: Colors.grey),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 70,
-            child: Text('$label：', style: const TextStyle(color: Colors.grey)),
-          ),
-          Expanded(
-            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class UpcomingTripsDialogContent extends StatelessWidget {
   final List<Trip> upcomingTrips;
   final Function(Trip) onCancelTrip;
@@ -558,12 +430,20 @@ class UpcomingTripsDialogContent extends StatelessWidget {
             itemCount: upcomingTrips.length,
             itemBuilder: (context, index) {
               final trip = upcomingTrips[index];
+              
+              final bool isFirstCard = index == 0;
+
               return PassengerTripCard( 
                 trip: trip,
                 onDetailTap: () => onDetailTap(trip),
                 onJoin: null, 
-                onCancel: () => onCancelTrip(trip),
                 onChat: () => onChatTrip(trip),
+                
+                cancelText: isFirstCard ? '離開' : '取消行程',
+                onDepart: isFirstCard ? null : () {
+                  // 出發按鈕 (不用邏輯)
+                },
+                onCancel: () => onCancelTrip(trip),
               );
             },
           );
