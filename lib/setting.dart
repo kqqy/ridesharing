@@ -84,7 +84,7 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  // 小標題工具 (這個還有用到，所以保留)
+  // 小標題工具
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -98,8 +98,6 @@ class SettingsPage extends StatelessWidget {
       ),
     );
   }
-
-  // ⚠️ 我把原本在這裡的 _buildSettingsItem 刪掉了，因為沒用到了
 }
 
 // ==========================================
@@ -131,13 +129,7 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
   }
 
   void _handleSave() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('偏好設定已更新！'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 1),
-      ),
-    );
+    // ⚠️ 移除提示
     Future.delayed(const Duration(milliseconds: 500), () {
       Navigator.pop(context);
     });
@@ -219,6 +211,11 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
               }).toList(),
             ),
             const SizedBox(height: 40),
+
+            Center(
+              child: Text('之後可以從設定更改', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+            ),
+            const SizedBox(height: 10),
 
             SizedBox(
               width: double.infinity,
@@ -327,13 +324,7 @@ class _EditCarInfoPageState extends State<EditCarInfoPage> {
   final TextEditingController _licensePlateController = TextEditingController();
 
   void _handleSave() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('車子資訊已更新！'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 1),
-      ),
-    );
+    // ⚠️ 移除提示
     Future.delayed(const Duration(milliseconds: 500), () {
       Navigator.pop(context);
     });
