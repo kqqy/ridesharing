@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'active_trip_widgets.dart'; // 引入 UI
 import 'chat_page.dart'; // 引入聊天室
+import 'rating_page.dart'; // [修正] 引入更名後的評價頁面
 
 class ActiveTripPage extends StatefulWidget {
   const ActiveTripPage({super.key});
@@ -11,7 +12,7 @@ class ActiveTripPage extends StatefulWidget {
 
 class _ActiveTripPageState extends State<ActiveTripPage> {
 
-  // [修改] 處理 SOS 求救：更新視窗內容
+  // 處理 SOS 求救
   void _handleSOS() {
     showDialog(
       context: context,
@@ -26,7 +27,6 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 靜態顯示倒數文字
             Text(
               '倒數兩秒', 
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.redAccent),
@@ -37,7 +37,6 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // 取消按鈕
               OutlinedButton(
                 onPressed: () => Navigator.pop(context),
                 style: OutlinedButton.styleFrom(
@@ -46,7 +45,6 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
                 ),
                 child: const Text('取消'),
               ),
-              // 確定按鈕
               ElevatedButton(
                 onPressed: () => Navigator.pop(context),
                 style: ElevatedButton.styleFrom(
@@ -64,7 +62,7 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
     );
   }
 
-  // 處理已到達
+  // [修改] 處理已到達：導向評價頁面
   void _handleArrived() {
     showDialog(
       context: context,
@@ -75,8 +73,13 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); // 關閉 Dialog
-              Navigator.pop(context); // 回到首頁
+              Navigator.pop(context); // 1. 關閉 Dialog
+              
+              // 2. 跳轉到評價頁面 (使用 pushReplacement 避免使用者按返回鍵回到行程中)
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (context) => const RatingPage()), // [修正] 跳轉至 RatingPage
+              );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
             child: const Text('確認'),
@@ -86,9 +89,8 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
     );
   }
 
-  // [修改] 處理分享行程：移除 SnackBar 提示 (靜默)
+  // 處理分享行程 (靜默)
   void _handleShare() {
-    // 這裡執行實際的分享邏輯，但介面上不顯示提示
     print('分享行程連結... (靜默模式)');
   }
 
