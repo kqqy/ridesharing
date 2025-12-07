@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'passenger_widgets.dart'; // 引入乘客的 UI 組件
 import 'trip_model.dart'; // 引入資料結構
-// import 'chat_page.dart'; // [修正] 移除未使用的引入
 import 'passenger_create_trip_page.dart'; // 引入創建行程頁面
-import 'passenger_upcoming_page.dart'; // 引入即將出發行程頁面
-import 'passenger_upcoming_widgets.dart'; // [修正] 確保引入以使用 PassengerTripDetailsDialog
+import 'upcoming_page.dart'; // [修正] 引入通用的 upcoming_page (邏輯)
+import 'upcoming_widgets.dart'; // [修正] 引入通用的 upcoming_widgets (取得 PassengerTripDetailsDialog)
 import 'passenger_history_page.dart'; // 引入歷史行程頁面
 
 class PassengerHome extends StatefulWidget {
@@ -19,22 +18,9 @@ class PassengerHome extends StatefulWidget {
 class _PassengerHomeState extends State<PassengerHome> {
   bool _showManageMenu = false;
 
-  // 探索行程 (首頁顯示的假資料)
   final List<Trip> _exploreTrips = [
-    Trip(
-      origin: '台中逢甲大學', 
-      destination: '台中高鐵站', 
-      time: '2025-12-06 18:00', 
-      seats: '3/4', 
-      note: '順路載人，歡迎共乘'
-    ),
-     Trip(
-      origin: '台南火車站', 
-      destination: '高雄巨蛋', 
-      time: '2025-12-08 10:00', 
-      seats: '2/4', 
-      note: '目前車上有一隻寵物狗'
-    ),
+    Trip(origin: '台中逢甲大學', destination: '台中高鐵站', time: '2025-12-06 18:00', seats: '3/4', note: '順路載人'),
+     Trip(origin: '台南火車站', destination: '高雄巨蛋', time: '2025-12-08 10:00', seats: '2/4', note: '有寵物'),
   ];
 
   void _closeMenu() {
@@ -49,12 +35,14 @@ class _PassengerHomeState extends State<PassengerHome> {
     });
   }
 
+  // 導航邏輯
   void _handleMenuSelection(String type) {
     _closeMenu(); 
     if (type == '即將出發行程') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const PassengerUpcomingPage()),
+        // 傳入 isDriver: false 表示是乘客
+        MaterialPageRoute(builder: (context) => const UpcomingPage(isDriver: false)),
       );
     } else if (type == '歷史行程與統計') {
       Navigator.push(
@@ -64,13 +52,14 @@ class _PassengerHomeState extends State<PassengerHome> {
     }
   }
   
-  // 共用邏輯：查看詳細
+  // 處理詳細資訊
   void _handleTripDetail(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王司機', 'role': '司機', 'rating': 4.7},
       {'name': '乘客 B', 'role': '乘客', 'rating': 4.5},
     ];
 
+    // 這裡呼叫的是 upcoming_widgets.dart 裡面的元件
     showDialog(
       context: context,
       builder: (context) => PassengerTripDetailsDialog(
@@ -80,25 +69,23 @@ class _PassengerHomeState extends State<PassengerHome> {
     );
   }
 
-  // 處理「我要共乘」按鈕 (靜默模式)
   void _handleJoinTrip(Trip trip) {
-    // 執行加入共乘邏輯
+    // 靜默
   }
 
-  // 處理「創建行程」按鈕
   void _handleCreateTrip() async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const PassengerCreateTripPage()),
     );
-
     if (result == true) {
-      // 刷新列表
+      // 靜默
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 取得 AppBar 預設高度，用於定位選單
     final double appBarHeight = AppBar().preferredSize.height;
 
     return Stack(
