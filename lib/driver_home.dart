@@ -16,224 +16,113 @@ class _DriverHomeState extends State<DriverHome> {
   // ==========================================
   //  1. 狀態變數
   // ==========================================
-  bool _showCreateForm = false; 
   bool _showManageMenu = false; 
   Trip? _currentActiveTrip; 
   final List<Trip> _upcomingTrips = []; 
-  bool _isAutoApprove = false; // 自動審核狀態
+  bool _isAutoApprove = false; 
 
-  // 控制器
-  final TextEditingController _originController = TextEditingController();
-  final TextEditingController _destinationController = TextEditingController();
-  final TextEditingController _timeController = TextEditingController();
-  final TextEditingController _seatsController = TextEditingController();
-  final TextEditingController _noteController = TextEditingController();
+  // 探索行程假資料
+  final List<Trip> _exploreTrips = [
+    Trip(
+      origin: '台中市政府', 
+      destination: '勤美誠品', 
+      time: '12-08 14:00', 
+      seats: '2/4', 
+      note: '徵求共乘'
+    ),
+    Trip(
+      origin: '逢甲夜市', 
+      destination: '高鐵台中站', 
+      time: '12-08 18:30', 
+      seats: '3/4', 
+      note: '行李箱可放'
+    ),
+    Trip(
+      origin: '新光三越', 
+      destination: '台中火車站', 
+      time: '12-09 10:00', 
+      seats: '1/4', 
+      note: '準時出發'
+    ),
+  ];
 
   void _closeAllDialogs() {
-    if (_showCreateForm || _showManageMenu) {
+    if (_showManageMenu) {
       setState(() {
-        _showCreateForm = false;
         _showManageMenu = false;
       });
     }
   }
 
+  // [修改] 處理加入行程 (靜默模式，不跳出視窗)
+  void _handleJoinTrip(Trip trip) {
+    // 直接執行加入邏輯
+    print('已加入行程: ${trip.destination} (靜默模式)');
+  }
+
+  // 處理選單項目選擇
+  void _handleMenuSelection(String value) {
+    setState(() => _showManageMenu = false); 
+    
+    if (value == '即將出發行程') {
+      _showUpcomingTripsDialog();
+    } else if (value == '歷史行程') {
+      _showHistoryTripsDialog();
+    }
+  }
+
+  // 處理 SOS
+  void _handleSOS() {
+    showDialog(context: context, builder: (context) => const SOSCountdownDialog());
+  }
+
+  // 處理到達
+  void _handleArrived() {
+    showDialog(
+      context: context, 
+      builder: (context) => AlertDialog(
+        title: const Text('確認到達？'), 
+        content: const Text('這將結束目前的行程。'), 
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), 
+          TextButton(
+            onPressed: () { 
+              Navigator.pop(context); 
+              setState(() { _currentActiveTrip = null; }); 
+              _showRatePassengerDialog(); 
+            }, 
+            child: const Text('確定到達')
+          )
+        ]
+      )
+    );
+  }
+
+  // 處理聊天室
+  void _handleChat() {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatPage()));
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: _closeAllDialogs,
-      behavior: HitTestBehavior.translucent,
-      child: Stack(
-        children: [
-          // 底層介面
-          _currentActiveTrip != null ? _buildActiveTripUI() : _buildIdleUI(),      
-
-          // 左上按鈕
-          if (_currentActiveTrip == null)
-            Positioned(
-              top: 20, left: 20,
-              child: ElevatedButton.icon(
-                onPressed: () => setState(() { _showCreateForm = !_showCreateForm; _showManageMenu = false; }),
-                icon: const Icon(Icons.add_location_alt),
-                label: const Text('創建行程'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.green[700], elevation: 2, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
-              ),
-            ),
-
-          // 右上按鈕
-          if (_currentActiveTrip == null)
-            Positioned(
-              top: 20, right: 20,
-              child: ElevatedButton.icon(
-                onPressed: () => setState(() { _showManageMenu = !_showManageMenu; _showCreateForm = false; }),
-                icon: const Icon(Icons.edit_calendar),
-                label: const Text('行程管理'),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.green[700], elevation: 2, padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12)),
-              ),
-            ),
-
-          // 浮動視窗
-          if (_showCreateForm) Positioned(top: 70, left: 20, child: _buildCreateTripForm()),
-          if (_showManageMenu) Positioned(top: 70, right: 20, child: _buildManageMenu()),
-        ],
-      ),
+    return DriverHomeBody(
+      themeColor: widget.themeColor,
+      currentActiveTrip: _currentActiveTrip,
+      isManageMenuVisible: _showManageMenu,
+      exploreTrips: _exploreTrips, 
+      onJoinTrip: _handleJoinTrip, // 傳遞修改後的靜默函式
+      onManageTap: () => setState(() { _showManageMenu = !_showManageMenu; }),
+      onMenuClose: _closeAllDialogs,
+      onMenuSelect: _handleMenuSelection,
+      onSOS: _handleSOS,
+      onArrived: _handleArrived,
+      onShare: () {}, 
+      onChat: _handleChat,
     );
   }
 
   // ==========================================
-  //  3. 介面組件
-  // ==========================================
-
-  Widget _buildIdleUI() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(color: widget.themeColor.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(Icons.drive_eta_rounded, size: 80, color: widget.themeColor),
-          ),
-          const SizedBox(height: 20),
-          const Text('目前還沒有行程', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActiveTripUI() {
-    if (_currentActiveTrip == null) return Container();
-    return Container(
-      color: Colors.grey[100],
-      padding: const EdgeInsets.all(20),
-      child: Center(
-        child: Container(
-          width: double.infinity,
-          height: MediaQuery.of(context).size.height * 0.75,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, spreadRadius: 2)]),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [const Icon(Icons.flag, color: Colors.red), const SizedBox(width: 8), Expanded(child: Text('目的地：${_currentActiveTrip!.destination}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis))]),
-              const SizedBox(height: 16),
-              Expanded(child: Container(width: double.infinity, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.grey.shade400)), child: const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.map, size: 50, color: Colors.grey), SizedBox(height: 10), Text('Google Map 預留區', style: TextStyle(color: Colors.grey, fontSize: 18))])),)),
-              const SizedBox(height: 16),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Row(children: [Icon(Icons.warning_amber_rounded, color: Colors.red), SizedBox(width: 5), Text('路徑偏移', style: TextStyle(color: Colors.red, fontSize: 18, fontWeight: FontWeight.bold))]), ElevatedButton.icon(onPressed: () => showDialog(context: context, builder: (context) => const SOSCountdownDialog()), icon: const Icon(Icons.sos, color: Colors.white), label: const Text('一鍵求助'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)))]),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // 1. 分享行程
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {},
-                      icon: const Icon(Icons.share),
-                      label: const Text('分享行程'),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8), 
-                  // 2. 聊天室
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatPage()));
-                      },
-                      icon: const Icon(Icons.message, color: Colors.blue),
-                      label: const Text('聊天室'),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 15),
-                        side: const BorderSide(color: Colors.blue),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8), 
-                  // 3. 已到達
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        showDialog(context: context, builder: (context) => AlertDialog(title: const Text('確認到達？'), content: const Text('這將結束目前的行程。'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), TextButton(onPressed: () { Navigator.pop(context); setState(() { _currentActiveTrip = null; }); _showRatePassengerDialog(); }, child: const Text('確定到達'))]));
-                    },
-                      icon: const Icon(Icons.check_circle),
-                      label: const Text('已到達'),
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.symmetric(vertical: 15), textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==========================================
-  //  4. 浮動視窗與選單
-  // ==========================================
-
-  Widget _buildManageMenu() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Padding(padding: const EdgeInsets.only(right: 40.0), child: CustomPaint(painter: TrianglePainter(), size: const Size(20, 10))),
-        Container(
-          width: 200,
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))]),
-          child: Column(children: [ListTile(leading: const Icon(Icons.departure_board, color: Colors.blue), title: const Text('即將出發行程'), onTap: () { setState(() => _showManageMenu = false); _showUpcomingTripsDialog(); }), const Divider(height: 1), ListTile(leading: const Icon(Icons.history, color: Colors.grey), title: const Text('歷史行程'), onTap: () { setState(() => _showManageMenu = false); _showHistoryTripsDialog(); })]),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCreateTripForm() {
-    double screenWidth = MediaQuery.of(context).size.width;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(padding: const EdgeInsets.only(left: 40.0), child: CustomPaint(painter: TrianglePainter(), size: const Size(20, 10))),
-        Container(
-          width: screenWidth - 40,
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 10, offset: const Offset(0, 5))]),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 5),
-              CompactTextField(controller: _originController, label: '出發地', icon: Icons.my_location),
-              const SizedBox(height: 10),
-              CompactTextField(controller: _destinationController, label: '目的地', icon: Icons.flag),
-              const SizedBox(height: 10),
-              CompactTextField(controller: _timeController, label: '出發時間', icon: Icons.access_time, readOnly: true, onTap: () async { DateTime? pickedDate = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime.now(), lastDate: DateTime(2100)); if (pickedDate == null) return; if (!mounted) return; TimeOfDay? pickedTime = await showTimePicker(context: context, initialTime: TimeOfDay.now()); if (pickedTime == null) return; setState(() { _timeController.text = "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')} ${pickedTime.hour.toString().padLeft(2, '0')}:${pickedTime.minute.toString().padLeft(2, '0')}"; }); }),
-              const SizedBox(height: 15),
-              Row(crossAxisAlignment: CrossAxisAlignment.center, children: [const Text('可乘座位數', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)), const SizedBox(width: 15), SizedBox(width: 50, child: TextField(controller: _seatsController, keyboardType: TextInputType.number, textAlign: TextAlign.center, decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true)))]),
-              const SizedBox(height: 15),
-              const Text('備註', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-              const SizedBox(height: 8),
-              TextField(controller: _noteController, decoration: InputDecoration(contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)), isDense: true)),
-              const SizedBox(height: 20),
-              SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () {
-                  setState(() {
-                    _upcomingTrips.add(Trip(origin: _originController.text, destination: _destinationController.text, time: _timeController.text, seats: _seatsController.text, note: _noteController.text));
-                    _showCreateForm = false;
-                  });
-                  _originController.clear(); _destinationController.clear(); _timeController.clear(); _seatsController.clear(); _noteController.clear();
-              }, style: ElevatedButton.styleFrom(backgroundColor: Colors.green[600], foregroundColor: Colors.white), child: const Text('創建行程'))),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ==========================================
-  //  5. 彈出視窗邏輯 (Dialogs)
+  //  彈出視窗邏輯 (Dialogs)
   // ==========================================
 
   void _showUpcomingTripsDialog() {
@@ -262,9 +151,7 @@ class _DriverHomeState extends State<DriverHome> {
                               else if (value == '編輯行程') _showEditOptionsDialog(_upcomingTrips[index], index, setStateDialog);
                               else if (value == '乘客管理') _showPassengerManagementDialog(context);
                             },
-                            onChat: () {
-                              Navigator.push(context, MaterialPageRoute(builder: (context) => const ChatPage()));
-                            },
+                            onChat: _handleChat,
                           ),
                         ),
                 ),
@@ -414,53 +301,9 @@ class _DriverHomeState extends State<DriverHome> {
     showDialog(
       context: context,
       builder: (context) {
-        final bool hasViolation = name == '乘客 1';
-        final String violationText = hasViolation ? '有惡意取消行程紀錄' : '無違規紀錄';
-        final Color violationColor = hasViolation ? Colors.red : Colors.grey;
-
         return Dialog(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('$name 的詳細資料', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                    IconButton(
-                      icon: const Icon(Icons.close, color: Colors.grey),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
-                ),
-                const Divider(),
-                
-                // 1. 星等
-                const SizedBox(height: 15),
-                const Text('星等：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Row(
-                  children: List.generate(5, (index) => Icon(
-                    index < rating ? Icons.star : Icons.star_border,
-                    color: Colors.amber,
-                    size: 24,
-                  )),
-                ),
-                
-                // 2. 違規紀錄
-                const SizedBox(height: 20),
-                const Text('違規紀錄：', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text(
-                  violationText,
-                  style: TextStyle(color: violationColor, fontSize: 16),
-                ),
-                const SizedBox(height: 10),
-              ],
-            ),
-          ),
+          child: PassengerDetailsContent(name: name, rating: rating),
         );
       },
     );
