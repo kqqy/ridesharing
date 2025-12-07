@@ -5,22 +5,43 @@ import 'package:flutter/material.dart';
 // ==========================================
 class HistoricalTripCard extends StatelessWidget {
   final String date;
+  final String time; 
   final String origin;
   final String destination;
-  final int memberCount; // 司機 + 乘客數量
+  final List<String> membersList; 
   final VoidCallback onTap;
 
   const HistoricalTripCard({
     super.key,
     required this.date,
+    required this.time,
     required this.origin,
     required this.destination,
-    required this.memberCount,
+    required this.membersList,
     required this.onTap,
   });
 
+  // [修正] 移除了 Expanded，避免在 Row 中嵌套導致 Layout 錯誤
+  // 因為時間字串很短，不需要佔滿剩餘空間
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min, // 讓 Row 只佔用需要的空間
+      children: [
+        Icon(icon, size: 16, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Text(
+          text, 
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500), 
+          overflow: TextOverflow.ellipsis
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final String membersString = membersList.join('、');
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
@@ -33,14 +54,20 @@ class HistoricalTripCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. 日期
-              Text(
-                date,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+              // 1. 頂部：日期與時間
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    date,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+                  ),
+                  _buildInfoRow(Icons.schedule, time),
+                ],
               ),
               const Divider(height: 16),
 
-              // 2. 出發地與目的地
+              // 2. 中間：出發地 -> 目的地
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -60,14 +87,19 @@ class HistoricalTripCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // 3. 成員統計
+              // 3. 底部：成員
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Icon(Icons.people_alt, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(
-                    '成員總數 (司機+乘客): $memberCount 人',
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  Expanded(
+                    child: Text(
+                      '成員: $membersString',
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),
@@ -80,14 +112,14 @@ class HistoricalTripCard extends StatelessWidget {
 }
 
 // ==========================================
-//  UI 元件：歷史行程主體
+//  UI 元件：歷史行程主體 (HistoryBody)
 // ==========================================
-class PassengerHistoryBody extends StatelessWidget {
+class HistoryBody extends StatelessWidget { 
   final List<Map<String, dynamic>> historyTrips;
   final VoidCallback onStatsTap;
   final Function(Map<String, dynamic>) onCardTap;
 
-  const PassengerHistoryBody({
+  const HistoryBody({
     super.key,
     required this.historyTrips,
     required this.onStatsTap,
@@ -112,7 +144,7 @@ class PassengerHistoryBody extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. 個人統計按鈕
+            // 統計按鈕
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -130,19 +162,21 @@ class PassengerHistoryBody extends StatelessWidget {
             
             const SizedBox(height: 25),
             
-            // 2. 行程卡片列表
+            // 列表標題
             const Text(
-              '已完成行程',
+              '歷史行程',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey),
             ),
             const SizedBox(height: 15),
 
+            // 列表內容
             ...historyTrips.map((trip) {
               return HistoricalTripCard(
-                date: trip['date'],
-                origin: trip['origin'],
-                destination: trip['destination'],
-                memberCount: trip['members'],
+                date: trip['date']?.toString() ?? '', 
+                time: trip['time']?.toString() ?? '',
+                origin: trip['origin']?.toString() ?? '',
+                destination: trip['destination']?.toString() ?? '',
+                membersList: (trip['members_list'] as List<dynamic>?)?.cast<String>() ?? ['無成員資料'], 
                 onTap: () => onCardTap(trip),
               );
             }).toList(),

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart'; 
-import 'driver_widgets.dart'; 
+import 'driver_widgets.dart'; // 引入 UI 元件
 import 'chat_page.dart'; 
-import 'upcoming_page.dart'; // [修正] 引入通用的 upcoming_page
+import 'upcoming_page.dart'; 
+import 'history_page.dart'; // 引入 HistoryPage
 
 class DriverHome extends StatefulWidget {
   final Color themeColor;
@@ -30,21 +31,23 @@ class _DriverHomeState extends State<DriverHome> {
   }
 
   void _handleJoinTrip(Trip trip) {
-    print('已加入行程: ${trip.destination} (靜默模式)');
+    debugPrint('已加入行程: ${trip.destination} (靜默模式)');
   }
 
-  // [修正] 導航邏輯
   void _handleMenuSelection(String value) {
     setState(() => _showManageMenu = false); 
     
     if (value == '即將出發行程') {
       Navigator.push(
         context,
-        // 傳入 isDriver: true
         MaterialPageRoute(builder: (context) => const UpcomingPage(isDriver: true)),
       );
-    } else if (value == '歷史行程') {
-      _showHistoryTripsDialog();
+    } else if (value == '歷史行程與統計') {
+      Navigator.push(
+        context,
+        // [修正] 移除 const，改為 HistoryPage()
+        MaterialPageRoute(builder: (context) => const HistoryPage()),
+      );
     }
   }
 
@@ -64,7 +67,7 @@ class _DriverHomeState extends State<DriverHome> {
             onPressed: () { 
               Navigator.pop(context); 
               setState(() { _currentActiveTrip = null; }); 
-              // 這裡可導向評價
+              showDialog(context: context, builder: (context) => const DriverRatePassengerDialog());
             }, 
             child: const Text('確定到達')
           )
@@ -93,31 +96,5 @@ class _DriverHomeState extends State<DriverHome> {
       onShare: () {}, 
       onChat: _handleChat,
     );
-  }
-
-  void _showHistoryTripsDialog() { 
-    showDialog(
-      context: context, 
-      builder: (context) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), 
-        child: Container(
-          padding: const EdgeInsets.all(20), 
-          height: MediaQuery.of(context).size.height * 0.66, 
-          child: Column(
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween, 
-                children: [
-                  const Text('歷史行程', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)), 
-                  IconButton(icon: const Icon(Icons.close, color: Colors.grey), onPressed: () => Navigator.pop(context))
-                ]
-              ), 
-              const Divider(), 
-              const Expanded(child: Center(child: Text('目前沒有歷史行程', style: TextStyle(fontSize: 16, color: Colors.grey))))
-            ]
-          )
-        )
-      )
-    ); 
   }
 }

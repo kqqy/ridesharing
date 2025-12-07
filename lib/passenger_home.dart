@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'passenger_widgets.dart'; // 引入乘客的 UI 組件
-import 'trip_model.dart'; // 引入資料結構
-import 'passenger_create_trip_page.dart'; // 引入創建行程頁面
-import 'upcoming_page.dart'; // [修正] 引入通用的 upcoming_page (邏輯)
-import 'upcoming_widgets.dart'; // [修正] 引入通用的 upcoming_widgets (取得 PassengerTripDetailsDialog)
-import 'passenger_history_page.dart'; // 引入歷史行程頁面
+import 'passenger_widgets.dart'; 
+import 'trip_model.dart'; 
+import 'passenger_create_trip_page.dart'; 
+import 'upcoming_page.dart'; 
+import 'upcoming_widgets.dart'; 
+import 'history_page.dart'; // 引入 HistoryPage
 
 class PassengerHome extends StatefulWidget {
   final Color themeColor;
@@ -35,31 +35,28 @@ class _PassengerHomeState extends State<PassengerHome> {
     });
   }
 
-  // 導航邏輯
   void _handleMenuSelection(String type) {
     _closeMenu(); 
     if (type == '即將出發行程') {
       Navigator.push(
         context,
-        // 傳入 isDriver: false 表示是乘客
         MaterialPageRoute(builder: (context) => const UpcomingPage(isDriver: false)),
       );
     } else if (type == '歷史行程與統計') {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const PassengerHistoryPage()),
+        // [修正] 移除 const，改為 HistoryPage()
+        MaterialPageRoute(builder: (context) => const HistoryPage()),
       );
     }
   }
   
-  // 處理詳細資訊
   void _handleTripDetail(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王司機', 'role': '司機', 'rating': 4.7},
       {'name': '乘客 B', 'role': '乘客', 'rating': 4.5},
     ];
 
-    // 這裡呼叫的是 upcoming_widgets.dart 裡面的元件
     showDialog(
       context: context,
       builder: (context) => PassengerTripDetailsDialog(
@@ -85,7 +82,6 @@ class _PassengerHomeState extends State<PassengerHome> {
 
   @override
   Widget build(BuildContext context) {
-    // 取得 AppBar 預設高度，用於定位選單
     final double appBarHeight = AppBar().preferredSize.height;
 
     return Stack(

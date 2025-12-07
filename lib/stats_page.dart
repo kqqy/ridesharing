@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
-import 'passenger_stats_widgets.dart'; // 引入 UI
+import 'stats_widgets.dart'; // [修正] 引入通用 UI
 
-class PassengerStatsPage extends StatefulWidget {
-  const PassengerStatsPage({super.key});
+class StatsPage extends StatefulWidget { // [修改] 更名
+  const StatsPage({super.key});
 
   @override
-  State<PassengerStatsPage> createState() => _PassengerStatsPageState();
+  State<StatsPage> createState() => _StatsPageState();
 }
 
-class _PassengerStatsPageState extends State<PassengerStatsPage> {
+class _StatsPageState extends State<StatsPage> {
   // 假資料
   final int _passengerTrips = 18;
   final int _driverTrips = 5;
@@ -16,7 +16,7 @@ class _PassengerStatsPageState extends State<PassengerStatsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return PassengerStatsBody(
+    return StatsBody( // [修正] 使用通用 Body
       passengerTrips: _passengerTrips,
       driverTrips: _driverTrips,
       averageRating: _averageRating,
