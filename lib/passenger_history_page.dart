@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'passenger_history_widgets.dart'; // 引入 UI
+import 'passenger_stats_page.dart'; // [新增] 引入個人統計頁面
 
 class PassengerHistoryPage extends StatefulWidget {
   const PassengerHistoryPage({super.key});
@@ -9,14 +10,14 @@ class PassengerHistoryPage extends StatefulWidget {
 }
 
 class _PassengerHistoryPageState extends State<PassengerHistoryPage> {
-  // [修改] 假資料：歷史行程清單 (新增 members_list)
+  // 假資料：歷史行程清單
   final List<Map<String, dynamic>> _historyTrips = [
     {
       'date': '2025-10-20', 
       'origin': '高雄火車站', 
       'destination': '墾丁國家公園', 
       'members': 3, 
-      'members_list': ['王司機 (D)', '乘客A', '乘客B'] // 包含司機和乘客名稱
+      'members_list': ['王司機 (D)', '乘客A', '乘客B'] 
     },
     {
       'date': '2025-09-05', 
@@ -34,13 +35,15 @@ class _PassengerHistoryPageState extends State<PassengerHistoryPage> {
     },
   ];
 
-  // 處理「個人統計」按鈕點擊
+  // [修改] 處理「個人統計」按鈕點擊：加入導航
   void _handleStatsTap() {
-    // 這裡通常會導航到統計圖表頁面
-    print('點擊了個人統計按鈕');
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const PassengerStatsPage()),
+    );
   }
 
-  // [修改] 處理單張卡片點擊 (顯示成員列表)
+  // 處理單張卡片點擊 (顯示成員列表)
   void _handleCardTap(Map<String, dynamic> trip) {
     // 準備要顯示的詳細內容列表
     List<Widget> details = [
@@ -54,13 +57,11 @@ class _PassengerHistoryPageState extends State<PassengerHistoryPage> {
         
     ];
 
-
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('行程詳情 (${trip['date']})'),
         content: Column(
-            // 使用 Column 讓內容垂直排列，並使用 mainAxisSize.min 確保彈窗大小適應內容
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: details,
