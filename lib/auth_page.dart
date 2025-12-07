@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'home_page.dart'; // 引入首頁
+import 'auth_widgets.dart'; // 引入 UI 檔案
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -43,109 +44,23 @@ class _AuthPageState extends State<AuthPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.directions_car_filled, size: 80, color: Colors.blue),
-              const SizedBox(height: 20),
-              Text(
-                isLogin ? '歡迎回來' : '建立帳戶',
-                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                isLogin ? '請輸入帳號密碼以繼續' : '第一步：填寫基本資料',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 30),
-
-              // 基本資料欄位
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: '電子郵件',
-                  prefixIcon: Icon(Icons.email_outlined),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              if (!isLogin) ...[
-                TextField(
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(
-                    labelText: '手機號碼',
-                    prefixIcon: Icon(Icons.phone_android),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: '密碼',
-                  prefixIcon: Icon(Icons.lock_outline),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // 主要按鈕
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton(
-                  onPressed: _handleSubmit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: Text(
-                    isLogin ? '登入' : '設定偏好',
-                    style: const TextStyle(fontSize: 18),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // 切換模式文字
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(isLogin ? '還沒有帳號嗎？' : '已經有帳號了？'),
-                  TextButton(
-                    onPressed: () {
-                      setState(() {
-                        isLogin = !isLogin;
-                      });
-                    },
-                    child: Text(isLogin ? '立即註冊' : '直接登入'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
+    return AuthBody(
+      isLogin: isLogin,
+      emailController: _emailController,
+      passwordController: _passwordController,
+      phoneController: _phoneController,
+      onToggleMode: () {
+        setState(() {
+          isLogin = !isLogin;
+        });
+      },
+      onSubmit: _handleSubmit,
     );
   }
 }
 
 // ==========================================
-//  👇 乘客設定頁面 (已更新：註冊成功視窗不顯示興趣)
+//  👇 乘客設定頁面 (邏輯層)
 // ==========================================
 
 class PassengerSettingsPage extends StatefulWidget {
@@ -193,107 +108,28 @@ class _PassengerSettingsPageState extends State<PassengerSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('乘客設定'),
-        backgroundColor: Colors.blue[300],
-        foregroundColor: Colors.white,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // --- 1. 個性 ---
-            const Text('您的個性', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: selectedPersonality,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                hintText: '請選擇您的個性',
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-              ),
-              items: personalityList.map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
-              onChanged: (val) => setState(() => selectedPersonality = val),
-            ),
-            const SizedBox(height: 24),
-
-            // --- 2. 興趣專長 (多選) ---
-            const Text('興趣 / 專長 (可多選)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8.0,
-              runSpacing: 4.0,
-              children: interestOptions.map((interest) {
-                final bool isSelected = selectedInterests.contains(interest);
-                return FilterChip(
-                  label: Text(interest),
-                  selected: isSelected,
-                  onSelected: (bool selected) {
-                    setState(() {
-                      if (selected) {
-                        selectedInterests.add(interest);
-                      } else {
-                        selectedInterests.remove(interest);
-                      }
-                    });
-                  },
-                  selectedColor: Colors.blue[100],
-                  checkmarkColor: Colors.blue[900],
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 24),
-
-            // --- 3. 共乘喜好 ---
-            const Text('共乘喜好', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            const Text('車內氣氛', style: TextStyle(color: Colors.grey)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10.0,
-              children: vibeOptions.map((vibe) {
-                final isSelected = selectedVibe == vibe;
-                return ChoiceChip(
-                  label: Text(vibe),
-                  selected: isSelected,
-                  selectedColor: Colors.blue[100],
-                  labelStyle: TextStyle(
-                    color: isSelected ? Colors.blue[900] : Colors.black,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                  onSelected: (selected) {
-                    if (selected) setState(() => selectedVibe = vibe);
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 30),
-
-            // 提示字
-            Center(
-              child: Text('之後可以從設定更改', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
-            ),
-            const SizedBox(height: 10),
-
-            // 確認按鈕
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _handleConfirm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: const Text('確認', style: TextStyle(fontSize: 18)),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return PassengerSettingsBody(
+      personalityList: personalityList,
+      selectedPersonality: selectedPersonality,
+      onPersonalityChanged: (val) => setState(() => selectedPersonality = val),
+      
+      interestOptions: interestOptions,
+      selectedInterests: selectedInterests,
+      onInterestToggle: (interest, selected) {
+        setState(() {
+          if (selected) {
+            selectedInterests.add(interest);
+          } else {
+            selectedInterests.remove(interest);
+          }
+        });
+      },
+      
+      vibeOptions: vibeOptions,
+      selectedVibe: selectedVibe,
+      onVibeChanged: (val) => setState(() => selectedVibe = val),
+      
+      onConfirm: _handleConfirm,
     );
   }
 }

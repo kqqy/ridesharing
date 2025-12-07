@@ -27,7 +27,7 @@ class PassengerHomeBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: Colors.white,
@@ -85,7 +85,7 @@ class PassengerHomeBody extends StatelessWidget {
                   child: Container(
                     height: 45,
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const TextField(
@@ -106,7 +106,7 @@ class PassengerHomeBody extends StatelessWidget {
                   child: Container(
                     height: 45,
                     decoration: BoxDecoration(
-                      color: Colors.grey[100],
+                      color: Colors.white,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const TextField(

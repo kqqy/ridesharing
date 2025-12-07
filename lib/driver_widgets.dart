@@ -10,9 +10,12 @@ class DriverHomeBody extends StatelessWidget {
   final bool isManageMenuVisible;
   final List<Trip> exploreTrips;
   final Function(Trip) onJoinTrip;
+  final Function(Trip) onExploreDetail; 
+
   final VoidCallback onManageTap;      
   final VoidCallback onMenuClose;      
   final Function(String) onMenuSelect; 
+  
   final VoidCallback onSOS;
   final VoidCallback onArrived;
   final VoidCallback onShare;
@@ -25,6 +28,7 @@ class DriverHomeBody extends StatelessWidget {
     required this.isManageMenuVisible,
     required this.exploreTrips,
     required this.onJoinTrip,
+    required this.onExploreDetail,
     required this.onManageTap,
     required this.onMenuClose,
     required this.onMenuSelect,
@@ -41,6 +45,7 @@ class DriverHomeBody extends StatelessWidget {
       behavior: HitTestBehavior.translucent,
       child: Stack(
         children: [
+          // 1. 底層介面
           currentActiveTrip != null 
               ? DriverActiveTripView(
                   trip: currentActiveTrip!,
@@ -53,21 +58,114 @@ class DriverHomeBody extends StatelessWidget {
                   themeColor: themeColor,
                   trips: exploreTrips,
                   onJoin: onJoinTrip,
+                  onDetailTap: onExploreDetail,
                 ),      
 
+          // 2. 上方區塊 (標題 + 雙搜尋欄)
           if (currentActiveTrip == null)
             Container(
-              height: 80,
+              height: 150,
               width: double.infinity,
-              color: const Color(0xFFF5F5F5).withOpacity(0.9),
-              padding: const EdgeInsets.only(top: 40, left: 20),
-              alignment: Alignment.topLeft,
-              child: Text('探索行程', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+              color: const Color(0xFFF5F5F5).withOpacity(0.95),
+              padding: const EdgeInsets.fromLTRB(20, 45, 20, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '探索行程', 
+                    style: TextStyle(
+                      fontSize: 24, 
+                      fontWeight: FontWeight.bold, 
+                      color: Color(0xFF424242)
+                    )
+                  ),
+                  const SizedBox(height: 15),
+                  
+                  // Row 包裹兩個搜尋框
+                  Row(
+                    children: [
+                      // 左邊：出發地搜尋
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              // [修改] 圖示改為灰色
+                              Icon(Icons.my_location, size: 18, color: Colors.grey[600]),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '出發地',
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 15,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(width: 10), // 中間間距
+
+                      // 右邊：目的地搜尋
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.1),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              // [修改] 圖示改為灰色
+                              Icon(Icons.flag, size: 18, color: Colors.grey[600]),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '目的地',
+                                  style: TextStyle(
+                                    color: Colors.grey[400],
+                                    fontSize: 15,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
 
+          // 3. 右上按鈕：行程管理
           if (currentActiveTrip == null)
             Positioned(
-              top: 35, right: 20,
+              top: 40,
+              right: 20,
               child: ElevatedButton.icon(
                 onPressed: onManageTap,
                 icon: const Icon(Icons.edit_calendar, size: 18),
@@ -82,9 +180,10 @@ class DriverHomeBody extends StatelessWidget {
               ),
             ),
 
+          // 4. 浮動視窗：行程管理選單
           if (isManageMenuVisible) 
             Positioned(
-              top: 80, 
+              top: 85, 
               right: 20, 
               child: DriverManageMenu(
                 onUpcomingTap: () => onMenuSelect('即將出發行程'),
@@ -104,8 +203,15 @@ class DriverExploreView extends StatelessWidget {
   final Color themeColor;
   final List<Trip> trips;
   final Function(Trip) onJoin;
+  final Function(Trip) onDetailTap;
 
-  const DriverExploreView({super.key, required this.themeColor, required this.trips, required this.onJoin});
+  const DriverExploreView({
+    super.key, 
+    required this.themeColor, 
+    required this.trips, 
+    required this.onJoin,
+    required this.onDetailTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -128,9 +234,13 @@ class DriverExploreView extends StatelessWidget {
     return Container(
       color: const Color(0xFFF5F5F5),
       child: ListView.builder(
-        padding: const EdgeInsets.only(top: 90, left: 20, right: 20, bottom: 20),
+        padding: const EdgeInsets.only(top: 160, left: 20, right: 20, bottom: 20),
         itemCount: trips.length,
-        itemBuilder: (context, index) => DriverExploreTripCard(trip: trips[index], onJoin: () => onJoin(trips[index])),
+        itemBuilder: (context, index) => DriverExploreTripCard(
+          trip: trips[index], 
+          onJoin: () => onJoin(trips[index]),
+          onDetailTap: () => onDetailTap(trips[index]),
+        ),
       ),
     );
   }
@@ -142,8 +252,14 @@ class DriverExploreView extends StatelessWidget {
 class DriverExploreTripCard extends StatelessWidget {
   final Trip trip;
   final VoidCallback onJoin;
+  final VoidCallback onDetailTap; 
 
-  const DriverExploreTripCard({super.key, required this.trip, required this.onJoin});
+  const DriverExploreTripCard({
+    super.key, 
+    required this.trip, 
+    required this.onJoin,
+    required this.onDetailTap, 
+  });
 
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
@@ -169,13 +285,36 @@ class DriverExploreTripCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildInfoRow(Icons.my_location, '出發：${trip.origin}'),
-          const SizedBox(height: 8),
-          _buildInfoRow(Icons.flag, '目的：${trip.destination}'),
-          const SizedBox(height: 8),
-          _buildInfoRow(Icons.access_time, '時間：${trip.time}'),
-          const SizedBox(height: 8),
-          _buildInfoRow(Icons.event_seat, '座位：${trip.seats}'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildInfoRow(Icons.my_location, '出發：${trip.origin}'),
+                    const SizedBox(height: 8),
+                    _buildInfoRow(Icons.flag, '目的：${trip.destination}'),
+                    const SizedBox(height: 8),
+                    _buildInfoRow(Icons.access_time, '時間：${trip.time}'),
+                    const SizedBox(height: 8),
+                    _buildInfoRow(Icons.event_seat, '座位：${trip.seats}'),
+                  ],
+                ),
+              ),
+              SizedBox(
+                width: 30,
+                height: 30,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.more_vert, color: Colors.grey),
+                  onPressed: onDetailTap,
+                  tooltip: '查看詳細',
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -270,7 +409,7 @@ class DriverManageMenu extends StatelessWidget {
 }
 
 // ==========================================
-//  6. 其他 Dialog 元件 (補回遺失的元件)
+//  6. 其他通用元件 (SOS, Painter, etc.)
 // ==========================================
 
 class SOSCountdownDialog extends StatelessWidget {
@@ -283,57 +422,15 @@ class SOSCountdownDialog extends StatelessWidget {
 
 class DriverRatePassengerDialog extends StatelessWidget {
   const DriverRatePassengerDialog({super.key});
-
   @override
   Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> passengers = [
-      {'name': '乘客 1', 'rating': 4}, 
-      {'name': '乘客 2', 'rating': 5}, 
-      {'name': '乘客 3', 'rating': 3}
-    ];
-
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Center(child: Text('評價乘客', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold))),
-            const Divider(),
-            Expanded(
-              child: ListView.builder(
-                itemCount: passengers.length,
-                itemBuilder: (context, index) {
-                  final p = passengers[index];
-                  return RatePassengerCard(
-                    name: p['name'], 
-                    initialRating: p['rating'], 
-                    passengerIndex: index,
-                  );
-                },
-              ),
-            ),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.pop(context),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
-                child: const Text('完成評價', style: TextStyle(fontSize: 18)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    final List<Map<String, dynamic>> passengers = [{'name': '乘客 1', 'rating': 4}, {'name': '乘客 2', 'rating': 5}, {'name': '乘客 3', 'rating': 3}];
+    return Dialog(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)), child: Container(padding: const EdgeInsets.all(20), constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9), child: Column(mainAxisSize: MainAxisSize.min, children: [const Center(child: Text('評價乘客', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold))), const Divider(), Expanded(child: ListView.builder(itemCount: passengers.length, itemBuilder: (context, index) { final p = passengers[index]; return RatePassengerCard(name: p['name'], initialRating: p['rating'], passengerIndex: index); })), SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () => Navigator.pop(context), style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)), child: const Text('完成評價', style: TextStyle(fontSize: 18))))])));
   }
 }
 
 class RatePassengerCard extends StatefulWidget {
-  final String name;
-  final int initialRating;
-  final int passengerIndex;
+  final String name; final int initialRating; final int passengerIndex;
   const RatePassengerCard({super.key, required this.name, required this.initialRating, required this.passengerIndex});
   @override
   State<RatePassengerCard> createState() => _RatePassengerCardState();
@@ -350,13 +447,7 @@ class _RatePassengerCardState extends State<RatePassengerCard> {
 
 class TrianglePainter extends CustomPainter {
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = Colors.white..style = PaintingStyle.fill;
-    final path = Path();
-    path.moveTo(size.width / 2, 0); path.lineTo(0, size.height); path.lineTo(size.width, size.height); path.close();
-    canvas.drawShadow(path, Colors.black.withOpacity(0.1), 2.0, false);
-    canvas.drawPath(path, paint);
-  }
+  void paint(Canvas canvas, Size size) { final paint = Paint()..color = Colors.white..style = PaintingStyle.fill; final path = Path(); path.moveTo(size.width / 2, 0); path.lineTo(0, size.height); path.lineTo(size.width, size.height); path.close(); canvas.drawShadow(path, Colors.black.withOpacity(0.1), 2.0, false); canvas.drawPath(path, paint); }
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

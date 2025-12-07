@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart'; 
-import 'driver_widgets.dart'; // 引入 UI 元件
+import 'driver_widgets.dart'; 
 import 'chat_page.dart'; 
 import 'upcoming_page.dart'; 
-import 'history_page.dart'; // 引入 HistoryPage
+import 'history_page.dart'; 
+import 'upcoming_widgets.dart'; // [新增] 為了使用 PassengerTripDetailsDialog
 
 class DriverHome extends StatefulWidget {
   final Color themeColor;
@@ -34,6 +35,21 @@ class _DriverHomeState extends State<DriverHome> {
     debugPrint('已加入行程: ${trip.destination} (靜默模式)');
   }
 
+  // [新增] 處理點擊卡片右上角三個點點
+  void _handleExploreDetail(Trip trip) {
+    final List<Map<String, dynamic>> fakeMembers = [
+      {'name': '發起人(乘客)', 'role': '乘客', 'rating': 4.8},
+    ];
+
+    showDialog(
+      context: context,
+      builder: (context) => PassengerTripDetailsDialog(
+        trip: trip,
+        members: fakeMembers,
+      ),
+    );
+  }
+
   void _handleMenuSelection(String value) {
     setState(() => _showManageMenu = false); 
     
@@ -45,7 +61,6 @@ class _DriverHomeState extends State<DriverHome> {
     } else if (value == '歷史行程與統計') {
       Navigator.push(
         context,
-        // [修正] 移除 const，改為 HistoryPage()
         MaterialPageRoute(builder: (context) => const HistoryPage()),
       );
     }
@@ -87,7 +102,8 @@ class _DriverHomeState extends State<DriverHome> {
       currentActiveTrip: _currentActiveTrip,
       isManageMenuVisible: _showManageMenu,
       exploreTrips: _exploreTrips, 
-      onJoinTrip: _handleJoinTrip, 
+      onJoinTrip: _handleJoinTrip,
+      onExploreDetail: _handleExploreDetail, // [新增]
       onManageTap: () => setState(() { _showManageMenu = !_showManageMenu; }),
       onMenuClose: _closeAllDialogs,
       onMenuSelect: _handleMenuSelection,
