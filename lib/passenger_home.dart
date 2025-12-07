@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'passenger_widgets.dart'; // 引入乘客的 UI 組件
 import 'trip_model.dart'; // 引入資料結構
-import 'chat_page.dart'; // 引入聊天室頁面
+// import 'chat_page.dart'; // [修正] 移除未使用的引入
 import 'passenger_create_trip_page.dart'; // 引入創建行程頁面
 import 'passenger_upcoming_page.dart'; // 引入即將出發行程頁面
-import 'passenger_upcoming_widgets.dart'; // 引入以取得 PassengerTripDetailsDialog
-import 'passenger_history_page.dart'; // [新增] 引入歷史行程頁面
+import 'passenger_upcoming_widgets.dart'; // [修正] 確保引入以使用 PassengerTripDetailsDialog
+import 'passenger_history_page.dart'; // 引入歷史行程頁面
 
 class PassengerHome extends StatefulWidget {
   final Color themeColor;
@@ -49,7 +49,6 @@ class _PassengerHomeState extends State<PassengerHome> {
     });
   }
 
-  // [修改] 處理選單點擊
   void _handleMenuSelection(String type) {
     _closeMenu(); 
     if (type == '即將出發行程') {
@@ -57,7 +56,7 @@ class _PassengerHomeState extends State<PassengerHome> {
         context,
         MaterialPageRoute(builder: (context) => const PassengerUpcomingPage()),
       );
-    } else if (type == '歷史行程與統計') { // [新增] 處理新的選單項
+    } else if (type == '歷史行程與統計') {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const PassengerHistoryPage()),
@@ -81,22 +80,9 @@ class _PassengerHomeState extends State<PassengerHome> {
     );
   }
 
-  // 處理「取消/離開行程」 (靜默模式)
-  void _handleCancelTrip(Trip trip) {
-    // 執行取消/離開邏輯，不顯示提示
-  }
-  
-  // 共用邏輯：聊天室
-  void _handleChatTrip(Trip trip) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const ChatPage()),
-    );
-  }
-
   // 處理「我要共乘」按鈕 (靜默模式)
   void _handleJoinTrip(Trip trip) {
-    // 執行加入共乘邏輯，不顯示提示
+    // 執行加入共乘邏輯
   }
 
   // 處理「創建行程」按鈕
@@ -107,7 +93,7 @@ class _PassengerHomeState extends State<PassengerHome> {
     );
 
     if (result == true) {
-      // (靜默)
+      // 刷新列表
     }
   }
 
@@ -136,7 +122,7 @@ class _PassengerHomeState extends State<PassengerHome> {
             right: 15,
             child: PassengerTripMenu(
               onUpcomingTap: () => _handleMenuSelection('即將出發行程'),
-              onHistoryTap: () => _handleMenuSelection('歷史行程與統計'), // [修改] 傳遞新的字串
+              onHistoryTap: () => _handleMenuSelection('歷史行程與統計'),
             ),
           ),
       ],

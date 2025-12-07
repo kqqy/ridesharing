@@ -3,6 +3,7 @@ import 'trip_model.dart';
 import 'passenger_upcoming_widgets.dart'; // 引入 UI
 import 'passenger_widgets.dart'; // 為了使用 PassengerTripDetailsDialog
 import 'chat_page.dart'; // 引入聊天室
+import 'active_trip_page.dart'; // [修正] 引入更名後的行程進行中頁面
 
 class PassengerUpcomingPage extends StatefulWidget {
   const PassengerUpcomingPage({super.key});
@@ -12,13 +13,13 @@ class PassengerUpcomingPage extends StatefulWidget {
 }
 
 class _PassengerUpcomingPageState extends State<PassengerUpcomingPage> {
-  // 假資料：這裡定義即將出發的行程
+  // 假資料
   final List<Trip> _upcomingTrips = [
     Trip(origin: '台北車站', destination: '市政府', time: '2025-12-06 14:30', seats: '1/3', note: '無'),
     Trip(origin: '新竹科學園區', destination: '桃園高鐵站', time: '2025-12-07 08:00', seats: '2/4', note: '希望乘客不要吃東西'),
   ];
 
-  // [修改] 處理取消/離開：交換按鈕位置
+  // 處理取消/離開：交換按鈕位置 (確定在左，取消在右)
   void _handleCancelTrip(Trip trip) {
     showDialog(
       context: context,
@@ -35,26 +36,23 @@ class _PassengerUpcomingPageState extends State<PassengerUpcomingPage> {
           ],
         ),
         actions: [
-          // 1. 確定 (主要動作，靠左) <--- 放在列表首位
+          // 1. 確定 (左)
           ElevatedButton(
             onPressed: () {
-              // 點擊「確定」，關閉視窗 (按鈕無須邏輯)
               Navigator.pop(context);
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             child: const Text('確定'),
           ),
-          // 2. 取消 (次要動作，靠右) <--- 放在列表尾端
+          // 2. 取消 (右)
           TextButton(
             onPressed: () {
-              // 點擊「取消」，關閉視窗 (按鈕無須邏輯)
               Navigator.pop(context);
             },
             child: const Text('取消', style: TextStyle(color: Colors.grey)),
           ),
         ],
-        // [修正] 確保按鈕靠右對齊 (這將使它們按照列表順序 [確定, 取消] 顯示在右側)
-        actionsAlignment: MainAxisAlignment.end, 
+        actionsAlignment: MainAxisAlignment.end,
       ),
     );
   }
@@ -67,7 +65,7 @@ class _PassengerUpcomingPageState extends State<PassengerUpcomingPage> {
     );
   }
 
-  // 處理出發 (靜默模式)
+  // 處理出發
   void _handleDepartTrip(Trip trip) {
     print('使用者在獨立頁面點擊出發：${trip.destination} (靜默模式)');
   }
@@ -95,7 +93,28 @@ class _PassengerUpcomingPageState extends State<PassengerUpcomingPage> {
       onCancelTrip: _handleCancelTrip,
       onChatTrip: _handleChatTrip,
       onDetailTap: _handleTripDetail,
-      onDepartTrip: _handleDepartTrip,
+      
+      // [修正] 修改出發邏輯：彈出點名視窗，確定後跳轉至 ActiveTripPage
+      onDepartTrip: (trip) {
+        final List<String> members = ['我 (司機)', '乘客 A', '乘客 B'];
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => PassengerManifestDialog(
+            members: members,
+            onConfirm: () {
+              Navigator.pop(context); // 關閉 Dialog
+              
+              // 跳轉到新的 ActiveTripPage
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ActiveTripPage()),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

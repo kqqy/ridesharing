@@ -44,25 +44,21 @@ class PassengerUpcomingBody extends StatelessWidget {
                 
                 final bool isFirstCard = index == 0;
 
-                // 1. 建立原本的卡片元件
                 Widget card = PassengerTripCard(
                   trip: trip,
                   onDetailTap: () => onDetailTap(trip),
                   onJoin: null,
                   onChat: () => onChatTrip(trip),
                   
-                  // 卡片按鈕邏輯
                   cancelText: isFirstCard ? '離開' : '取消行程',
                   onDepart: isFirstCard ? null : () => onDepartTrip(trip),
                   onCancel: () => onCancelTrip(trip),
                 );
 
-                // 2. 如果是下面的卡片 (!isFirstCard)，使用 Stack 加上左下角文字
                 if (!isFirstCard) {
                   return Stack(
                     children: [
                       card,
-                      // 定位文字
                       const Positioned(
                         left: 28,
                         bottom: 40,
@@ -103,7 +99,7 @@ class PassengerUpcomingBody extends StatelessWidget {
 }
 
 // ==========================================
-//  2. 行程詳細資訊視窗 (UI component moved from passenger_widgets.dart)
+//  2. UI 元件：行程詳細資訊視窗
 // ==========================================
 class PassengerTripDetailsDialog extends StatelessWidget {
   final Trip trip;
@@ -245,6 +241,127 @@ class PassengerTripDetailsDialog extends StatelessWidget {
             child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  3. 成員點名視窗 (PassengerManifestDialog)
+// ==========================================
+class PassengerManifestDialog extends StatefulWidget {
+  final List<String> members;
+  final VoidCallback onConfirm;
+
+  const PassengerManifestDialog({
+    super.key, 
+    required this.members,
+    required this.onConfirm,
+  });
+
+  @override
+  State<PassengerManifestDialog> createState() => _PassengerManifestDialogState();
+}
+
+class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
+  late Map<String, int> _memberStatus;
+
+  @override
+  void initState() {
+    super.initState();
+    _memberStatus = {for (var m in widget.members) m: 0};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Center(child: Text('目前成員', style: TextStyle(fontWeight: FontWeight.bold))),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: widget.members.map((name) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                  Row(
+                    children: [
+                      _buildStatusButton(
+                        label: '已到達',
+                        isSelected: _memberStatus[name] == 1,
+                        activeColor: Colors.green,
+                        onTap: () => setState(() => _memberStatus[name] = 1),
+                      ),
+                      const SizedBox(width: 8),
+                      _buildStatusButton(
+                        label: '未到達',
+                        isSelected: _memberStatus[name] == 2,
+                        activeColor: Colors.red,
+                        onTap: () => setState(() => _memberStatus[name] = 2),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+      actions: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16)),
+            ),
+            ElevatedButton(
+              onPressed: widget.onConfirm,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('確定出發', style: TextStyle(fontSize: 16)),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatusButton({
+    required String label,
+    required bool isSelected,
+    required Color activeColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? activeColor : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? activeColor : Colors.grey.shade300,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[600],
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
       ),
     );
   }
