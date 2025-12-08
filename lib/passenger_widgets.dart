@@ -176,6 +176,7 @@ class PassengerTripCard extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2, 
+      color: Colors.white,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
       child: Padding(
         padding: const EdgeInsets.all(16.0),
