@@ -8,6 +8,10 @@ class SettingsBody extends StatelessWidget {
   final VoidCallback onEditPreferences;
   final VoidCallback onViolationStatus;
   final VoidCallback onEditCarInfo;
+  
+  // [新增] 自動審核相關參數
+  final bool isAutoApprove;
+  final ValueChanged<bool> onAutoApproveChanged;
 
   const SettingsBody({
     super.key,
@@ -15,6 +19,8 @@ class SettingsBody extends StatelessWidget {
     required this.onEditPreferences,
     required this.onViolationStatus,
     required this.onEditCarInfo,
+    required this.isAutoApprove, // [新增]
+    required this.onAutoApproveChanged, // [新增]
   });
 
   @override
@@ -39,6 +45,16 @@ class SettingsBody extends StatelessWidget {
           // 乘客設定區塊
           _buildSectionTitle('乘客設定'),
           
+          // [新增] 自動審核成員開關
+          SwitchListTile(
+            secondary: Icon(Icons.person_add_alt, color: Colors.blue[300]),
+            title: const Text('自動審核成員'),
+            subtitle: const Text('開啟後，系統將自動同意加入請求'),
+            value: isAutoApprove,
+            onChanged: onAutoApproveChanged,
+            activeColor: Colors.blue,
+          ),
+
           // 編輯偏好按鈕
           ListTile(
             leading: Icon(Icons.favorite_border, color: Colors.blue[300]),
@@ -90,7 +106,6 @@ class SettingsBody extends StatelessWidget {
 
 // ==========================================
 //  2. UI 元件：編輯偏好主體 (EditPreferencesBody)
-//  [修改] 移除了提示文字
 // ==========================================
 class EditPreferencesBody extends StatelessWidget {
   final List<String> personalityList;
@@ -188,8 +203,6 @@ class EditPreferencesBody extends StatelessWidget {
               }).toList(),
             ),
             const SizedBox(height: 40),
-
-            // [修改] 原本這裡有一行提示文字，已經移除
 
             SizedBox(
               width: double.infinity,

@@ -4,14 +4,31 @@ import 'setting_widgets.dart'; // [修正] 確保引入這個檔案
 
 // ==========================================
 //  1. 設定列表頁面 (主入口)
+//  [修改] 改為 StatefulWidget 以管理開關狀態
 // ==========================================
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  // [新增] 自動審核狀態變數
+  bool _isAutoApprove = false; 
 
   @override
   Widget build(BuildContext context) {
     return SettingsBody(
+      // [新增] 傳遞狀態與更新函式
+      isAutoApprove: _isAutoApprove,
+      onAutoApproveChanged: (value) {
+        setState(() {
+          _isAutoApprove = value;
+        });
+      },
+      
       onLogout: () {
         Navigator.pushAndRemoveUntil(
           context,
