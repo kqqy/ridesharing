@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'passenger_widgets.dart'; // 引入乘客首頁 UI
+import 'passenger_widgets.dart'; 
 import 'trip_model.dart'; 
 import 'passenger_create_trip_page.dart'; 
 import 'upcoming_page.dart'; 
-import 'upcoming_widgets.dart'; // 引入共用彈窗元件 (PassengerTripDetailsDialog)
+import 'upcoming_widgets.dart'; 
 import 'history_page.dart'; 
 
 class PassengerHome extends StatefulWidget {
@@ -50,7 +50,6 @@ class _PassengerHomeState extends State<PassengerHome> {
     }
   }
   
-  // 顯示行程詳細資訊 (使用 upcoming_widgets.dart 裡的共用元件)
   void _handleTripDetail(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王司機', 'role': '司機', 'rating': 4.7},
@@ -70,13 +69,15 @@ class _PassengerHomeState extends State<PassengerHome> {
     // 靜默
   }
 
+  // 建立行程
   void _handleCreateTrip() async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const PassengerCreateTripPage()),
     );
     if (result == true) {
-      // 靜默
+      // 這裡可以處理新增成功後的邏輯，例如刷新列表
+      // 目前保持靜默
     }
   }
 
@@ -84,31 +85,45 @@ class _PassengerHomeState extends State<PassengerHome> {
   Widget build(BuildContext context) {
     final double appBarHeight = AppBar().preferredSize.height;
 
-    return Stack(
-      children: [
-        GestureDetector(
-          onTap: _closeMenu,
-          behavior: HitTestBehavior.translucent,
-          child: PassengerHomeBody(
-            themeColor: widget.themeColor,
-            onManageTripTap: _handleManageTrip,
-            exploreTrips: _exploreTrips, 
-            onExploreDetail: _handleTripDetail, 
-            onExploreJoin: _handleJoinTrip, 
-            onCreateTrip: _handleCreateTrip, 
-          ),
-        ),
-
-        if (_showManageMenu)
-          Positioned(
-            top: appBarHeight + 10, 
-            right: 15,
-            child: PassengerTripMenu(
-              onUpcomingTap: () => _handleMenuSelection('即將出發行程'),
-              onHistoryTap: () => _handleMenuSelection('歷史行程與統計'),
+    // [修改] 使用 Scaffold 包裹，以便使用標準的 FloatingActionButton
+    return Scaffold(
+      backgroundColor: Colors.white,
+      // [新增] 右下角懸浮按鈕 (建立行程)
+      floatingActionButton: FloatingActionButton(
+        onPressed: _handleCreateTrip,
+        backgroundColor: Colors.blue,
+        shape: const CircleBorder(), // 圓形
+        elevation: 4,
+        child: const Icon(Icons.add, color: Colors.white, size: 30),
+      ),
+      body: Stack(
+        children: [
+          // 底層：主頁面內容
+          GestureDetector(
+            onTap: _closeMenu,
+            behavior: HitTestBehavior.translucent,
+            child: PassengerHomeBody(
+              themeColor: widget.themeColor,
+              onManageTripTap: _handleManageTrip,
+              exploreTrips: _exploreTrips, 
+              onExploreDetail: _handleTripDetail, 
+              onExploreJoin: _handleJoinTrip, 
+              onCreateTrip: _handleCreateTrip, 
             ),
           ),
-      ],
+
+          // 上層：右上角選單 (如果 _showManageMenu 為 true 則顯示)
+          if (_showManageMenu)
+            Positioned(
+              top: appBarHeight + 10, 
+              right: 15,
+              child: PassengerTripMenu(
+                onUpcomingTap: () => _handleMenuSelection('即將出發行程'),
+                onHistoryTap: () => _handleMenuSelection('歷史行程與統計'),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
