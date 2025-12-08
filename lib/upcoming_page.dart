@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
 import 'upcoming_widgets.dart'; // 引入 UI
-import 'driver_widgets.dart';   // 引入司機的 DriverManifestDialog
 import 'chat_page.dart';        // 引入聊天室
 import 'active_trip_page.dart'; // 引入行程進行中頁面
 
@@ -66,23 +65,31 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  // 處理出發 (邏輯)
+  // 處理出發 (乘客端)
   void _handleDepartTrip(Trip trip) {
-    // 這裡通常會呼叫 API，或顯示點名單
-    // 為了範例，我們這裡暫時只做簡單跳轉，或者您可以復原之前的點名邏輯
-    // 因為這是"通用"頁面，這裡假設乘客點擊出發可能是"我已上車"之類的意思，
-    // 或是如果您的需求是乘客端按出發無效，可以在這裡不做任何事，但UI按鈕會顯示。
-    
-    // 如果您希望乘客端按出發是跳轉到 ActiveTripPage (模擬行程開始)
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const ActiveTripPage()),
+    // 1. 準備假成員資料 (顯示在點名視窗中)
+    final List<String> tripMembers = ['司機', '我 (乘客)', '乘客 B'];
+
+    // 2. 顯示乘客專用的點名視窗
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PassengerManifestDialog(
+        members: tripMembers,
+        onConfirm: () {
+          Navigator.pop(context); // 關閉 Dialog
+          // 3. 跳轉到行程進行中頁面
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const ActiveTripPage()),
+          );
+        },
+      ),
     );
   }
 
   // 處理詳細資訊
   void _handleTripDetail(Trip trip) {
-    // 這裡的資料如果是真實的，應該從 API 獲取
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王大明', 'role': '司機', 'rating': 4.9},
       {'name': '乘客 A', 'role': '乘客', 'rating': 5.0},
@@ -105,10 +112,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
       onCancelTrip: _handleCancelTrip,
       onChatTrip: _handleChatTrip,
       onDetailTap: _handleTripDetail,
-      
-      // [關鍵修改] 邏輯控制：
-      // 如果是司機 -> 傳入 null (UI 就會隱藏按鈕)
-      // 如果是乘客 -> 傳入 _handleDepartTrip (UI 就會顯示按鈕)
+      // 乘客端：傳入出發函式；司機端：null
       onDepartTrip: widget.isDriver ? null : _handleDepartTrip,
     );
   }

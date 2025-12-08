@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
-import 'passenger_widgets.dart'; 
+import 'passenger_widgets.dart'; // 借用 PassengerTripCard 的樣式
 
 // ==========================================
 //  1. UI 元件：即將出發行程的整頁介面 (通用版)
@@ -11,7 +11,7 @@ class UpcomingBody extends StatelessWidget {
   final Function(Trip) onCancelTrip; 
   final Function(Trip) onChatTrip;
   final Function(Trip) onDetailTap;
-  final Function(Trip)? onDepartTrip; // 接收 Nullable 函式
+  final Function(Trip)? onDepartTrip; 
 
   const UpcomingBody({
     super.key,
@@ -43,20 +43,28 @@ class UpcomingBody extends StatelessWidget {
               itemCount: upcomingTrips.length,
               itemBuilder: (context, index) {
                 final trip = upcomingTrips[index];
+                
                 final bool isFirstCard = index == 0;
 
-                // 決定取消按鈕的文字
-                String cancelBtnText = isDriver 
-                    ? '取消行程' 
-                    : (isFirstCard ? '離開' : '取消行程');
-
-                // [修正] UI 不再負責判斷身分來決定是否顯示出發按鈕
-                // 而是單純判斷：如果是第一張卡片，且上層有傳入 onDepartTrip 函式，就顯示
+                String cancelBtnText;
                 VoidCallback? departAction;
-                if (isFirstCard && onDepartTrip != null) {
-                  departAction = () => onDepartTrip!(trip);
+
+                if (isDriver) {
+                  // --- 司機模式 ---
+                  // 司機端一律顯示取消，且依照您的要求不顯示出發按鈕
+                  cancelBtnText = '取消行程';
+                  departAction = null; 
                 } else {
-                  departAction = null;
+                  // --- 乘客模式 (恢復原本邏輯) ---
+                  if (isFirstCard) {
+                    // 第一張卡片 (參加別人的行程)：顯示「離開」，不能出發
+                    cancelBtnText = '離開';
+                    departAction = null; 
+                  } else {
+                    // 其他卡片 (自己創建的行程)：顯示「取消行程」，可以出發
+                    cancelBtnText = '取消行程';
+                    departAction = () => onDepartTrip?.call(trip);
+                  }
                 }
 
                 Widget card = PassengerTripCard(
@@ -65,11 +73,11 @@ class UpcomingBody extends StatelessWidget {
                   onJoin: null,
                   onChat: () => onChatTrip(trip),
                   cancelText: cancelBtnText,
-                  onDepart: departAction, // 傳遞處理好的 action
+                  onDepart: departAction, 
                   onCancel: () => onCancelTrip(trip),
                 );
 
-                if (!isDriver && isFirstCard) {
+                if (!isDriver && !isFirstCard) {
                   return Stack(
                     children: [
                       card,
@@ -232,7 +240,13 @@ class PassengerTripDetailsDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildSectionTitle(String title) => Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey));
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+    );
+  }
+
   Widget _buildDetailItem(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8.0),
@@ -241,8 +255,13 @@ class PassengerTripDetailsDialog extends StatelessWidget {
         children: [
           Icon(icon, size: 18, color: Colors.grey),
           const SizedBox(width: 8),
-          SizedBox(width: 70, child: Text('$label：', style: const TextStyle(color: Colors.grey))),
-          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500))),
+          SizedBox(
+            width: 70,
+            child: Text('$label：', style: const TextStyle(color: Colors.grey)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+          ),
         ],
       ),
     );
@@ -250,7 +269,112 @@ class PassengerTripDetailsDialog extends StatelessWidget {
 }
 
 // ==========================================
-//  3. 司機專用點名視窗 (DriverManifestDialog)
+//  3. 乘客專用點名視窗 (PassengerManifestDialog)
+// ==========================================
+class PassengerManifestDialog extends StatefulWidget {
+  final List<String> members;
+  final VoidCallback onConfirm;
+
+  const PassengerManifestDialog({
+    super.key, 
+    required this.members,
+    required this.onConfirm,
+  });
+
+  @override
+  State<PassengerManifestDialog> createState() => _PassengerManifestDialogState();
+}
+
+class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
+  late Map<String, int> _status;
+
+  @override
+  void initState() {
+    super.initState();
+    _status = {for (var m in widget.members) m: 0};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('目前成員', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            const Divider(),
+            const SizedBox(height: 10),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 250),
+              child: ListView(
+                shrinkWrap: true,
+                children: widget.members.map((name) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Row(
+                        children: [
+                          _buildStatusBtn('已到達', name, 1, Colors.green),
+                          const SizedBox(width: 10),
+                          _buildStatusBtn('未到達', name, 2, Colors.red),
+                        ],
+                      )
+                    ],
+                  ),
+                )).toList(),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context), 
+                  child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16))
+                ),
+                ElevatedButton(
+                  onPressed: widget.onConfirm,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                  child: const Text('確定', style: TextStyle(fontSize: 16)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBtn(String label, String name, int val, Color color) {
+    final isSelected = _status[name] == val;
+    return InkWell(
+      onTap: () => setState(() => _status[name] = val),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[600],
+            fontWeight: FontWeight.bold,
+            fontSize: 12,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  4. 司機專用點名視窗 (DriverManifestDialog)
 // ==========================================
 class DriverManifestDialog extends StatefulWidget {
   final List<String> passengers;
