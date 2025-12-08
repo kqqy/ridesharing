@@ -69,7 +69,7 @@ class UpcomingBody extends StatelessWidget {
                   onCancel: () => onCancelTrip(trip),
                 );
 
-                if (!isDriver && !isFirstCard) {
+                if (!isDriver && isFirstCard) {
                   return Stack(
                     children: [
                       card,
