@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
-import 'upcoming_widgets.dart'; // 引入 UI
-import 'chat_page.dart';        // 引入聊天室
-import 'active_trip_page.dart'; // 引入行程進行中頁面
+import 'upcoming_widgets.dart'; 
+import 'chat_page.dart';        
+import 'active_trip_page.dart'; 
 
 class UpcomingPage extends StatefulWidget {
   final bool isDriver; 
@@ -67,18 +67,15 @@ class _UpcomingPageState extends State<UpcomingPage> {
 
   // 處理出發 (乘客端)
   void _handleDepartTrip(Trip trip) {
-    // 1. 準備假成員資料 (顯示在點名視窗中)
     final List<String> tripMembers = ['司機', '我 (乘客)', '乘客 B'];
 
-    // 2. 顯示乘客專用的點名視窗
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => PassengerManifestDialog(
         members: tripMembers,
         onConfirm: () {
-          Navigator.pop(context); // 關閉 Dialog
-          // 3. 跳轉到行程進行中頁面
+          Navigator.pop(context); 
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const ActiveTripPage()),
@@ -88,8 +85,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  // 處理詳細資訊
-  void _handleTripDetail(Trip trip) {
+  // 顯示行程詳細資訊 Dialog
+  void _showTripDetails(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王大明', 'role': '司機', 'rating': 4.9},
       {'name': '乘客 A', 'role': '乘客', 'rating': 5.0},
@@ -102,6 +99,61 @@ class _UpcomingPageState extends State<UpcomingPage> {
         members: fakeMembers,
       ),
     );
+  }
+
+  // [修改] 處理詳細資訊點擊 (判斷是否顯示選單)
+  void _handleTripDetail(Trip trip) {
+    // 假設 List 中的第二筆行程 (_upcomingTrips[1]) 是使用者自己創建的
+    // 這與 UpcomingBody 中的 isFirstCard 判斷邏輯對應 (index > 0)
+    bool isCreatedByMe = !widget.isDriver && _upcomingTrips.indexOf(trip) > 0;
+
+    if (isCreatedByMe) {
+      // 顯示 Popover 選單
+      showDialog(
+        context: context,
+        builder: (context) => SimpleDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: const Text('行程選項'),
+          children: [
+            SimpleDialogOption(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              onPressed: () {
+                Navigator.pop(context);
+                _showTripDetails(trip); // 顯示原有的詳細資訊
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue),
+                  SizedBox(width: 10),
+                  Text('行程詳細資訊', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            ),
+            SimpleDialogOption(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              onPressed: () {
+                Navigator.pop(context);
+                // 顯示加入要求視窗
+                showDialog(
+                  context: context,
+                  builder: (context) => const JoinRequestsDialog(),
+                );
+              },
+              child: const Row(
+                children: [
+                  Icon(Icons.person_add_alt_1, color: Colors.orange),
+                  SizedBox(width: 10),
+                  Text('加入要求', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // 不是自己創建的，直接顯示詳細資訊
+      _showTripDetails(trip);
+    }
   }
 
   @override

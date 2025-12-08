@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
 import 'passenger_widgets.dart'; // 借用 PassengerTripCard 的樣式
+import 'stats_page.dart'; // [新增] 引入統計頁面
 
 // ==========================================
 //  1. UI 元件：即將出發行程的整頁介面 (通用版)
@@ -51,17 +52,14 @@ class UpcomingBody extends StatelessWidget {
 
                 if (isDriver) {
                   // --- 司機模式 ---
-                  // 司機端一律顯示取消，且依照您的要求不顯示出發按鈕
                   cancelBtnText = '取消行程';
                   departAction = null; 
                 } else {
-                  // --- 乘客模式 (恢復原本邏輯) ---
+                  // --- 乘客模式 ---
                   if (isFirstCard) {
-                    // 第一張卡片 (參加別人的行程)：顯示「離開」，不能出發
                     cancelBtnText = '離開';
                     departAction = null; 
                   } else {
-                    // 其他卡片 (自己創建的行程)：顯示「取消行程」，可以出發
                     cancelBtnText = '取消行程';
                     departAction = () => onDepartTrip?.call(trip);
                   }
@@ -269,7 +267,274 @@ class PassengerTripDetailsDialog extends StatelessWidget {
 }
 
 // ==========================================
-//  3. 乘客專用點名視窗 (PassengerManifestDialog)
+//  3. 加入要求視窗 (JoinRequestsDialog)
+// ==========================================
+class JoinRequestsDialog extends StatefulWidget {
+  const JoinRequestsDialog({super.key});
+
+  @override
+  State<JoinRequestsDialog> createState() => _JoinRequestsDialogState();
+}
+
+class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
+  // 假資料
+  final List<Map<String, dynamic>> _requests = [
+    {
+      'id': 1, 
+      'name': '新成員 A', 
+      'rating': 4.5,
+      'violation': 0, // 違規次數
+      'noShow': 2,    // 放鳥次數
+    },
+    {
+      'id': 2, 
+      'name': '新成員 B', 
+      'rating': 3.8,
+      'violation': 1,
+      'noShow': 0,
+    },
+  ];
+
+  void _removeRequest(int id) {
+    setState(() {
+      _requests.removeWhere((element) => element['id'] == id);
+    });
+  }
+
+  // 顯示成員詳細資料
+  void _showMemberProfile(Map<String, dynamic> member) {
+    showDialog(
+      context: context,
+      builder: (context) => MemberProfileDialog(
+        name: member['name'],
+        rating: member['rating'],
+        violationCount: member['violation'],
+        noShowCount: member['noShow'],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+        child: Column(
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('加入要求', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                IconButton(
+                  icon: const Icon(Icons.close, color: Colors.grey),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+            const Divider(),
+            Expanded(
+              child: _requests.isEmpty 
+              ? const Center(child: Text('目前沒有加入要求', style: TextStyle(color: Colors.grey)))
+              : ListView.builder(
+                  itemCount: _requests.length,
+                  itemBuilder: (context, index) {
+                    final req = _requests[index];
+                    return InkWell(
+                      // 點擊項目跳出成員詳細資料
+                      onTap: () => _showMemberProfile(req),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade200),
+                        ),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              backgroundColor: Colors.orange[100],
+                              child: const Icon(Icons.person, color: Colors.orange),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(req['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.star, size: 14, color: Colors.amber),
+                                      const SizedBox(width: 2),
+                                      Text(req['rating'].toString(), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // 打勾按鈕 - 靜默
+                            IconButton(
+                              icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
+                              onPressed: () {},
+                            ),
+                            // 打叉按鈕 - 靜默
+                            IconButton(
+                              icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
+                              onPressed: () {},
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  4. 成員資訊卡片 (MemberProfileDialog)
+//  [修改] 加上右上角「詳細資料」按鈕
+// ==========================================
+class MemberProfileDialog extends StatelessWidget {
+  final String name;
+  final double rating;
+  final int violationCount;
+  final int noShowCount;
+
+  const MemberProfileDialog({
+    super.key,
+    required this.name,
+    required this.rating,
+    required this.violationCount,
+    required this.noShowCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: const Color(0xFFEBEFF5), 
+      child: Stack(
+        children: [
+          // 1. 主要內容
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 標題 (名字)
+                Text(
+                  name,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
+                ),
+                const SizedBox(height: 15),
+                const Divider(color: Colors.black12, thickness: 1),
+                const SizedBox(height: 15),
+
+                // 違規次數
+                _buildInfoRow('違規次數', '$violationCount 次'),
+                const SizedBox(height: 10),
+                // 放鳥次數
+                _buildInfoRow('放鳥次數', '$noShowCount 次'),
+                
+                const SizedBox(height: 20),
+                const Divider(color: Colors.black12, thickness: 1),
+                const SizedBox(height: 15),
+
+                // 平均評價
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text(
+                      '平均評價',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                    ),
+                    const SizedBox(width: 15),
+                    Row(
+                      children: List.generate(5, (index) {
+                        if (index < rating.floor()) {
+                          return const Icon(Icons.star, color: Colors.amber, size: 24);
+                        } else if (index < rating) {
+                          return const Icon(Icons.star_half, color: Colors.amber, size: 24);
+                        }
+                        return const Icon(Icons.star_border, color: Colors.amber, size: 24);
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      rating.toString(),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 30),
+                const Divider(color: Colors.black12, thickness: 1),
+                
+                // 關閉按鈕
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('關閉', style: TextStyle(color: Colors.blueGrey, fontSize: 16)),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. [新增] 右上角「詳細資料」按鈕
+          Positioned(
+            top: 10,
+            right: 10,
+            child: TextButton(
+              onPressed: () {
+                // 關閉目前的 Dialog，然後跳轉到 StatsPage (個人統計)
+                Navigator.pop(context);
+                Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (context) => const StatsPage())
+                );
+              },
+              child: const Text(
+                '詳細資料', 
+                style: TextStyle(
+                  color: Colors.blue, 
+                  fontSize: 14, 
+                  fontWeight: FontWeight.bold
+                )
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(fontSize: 16, color: Colors.black54),
+        ),
+        Text(
+          value,
+          style: const TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold),
+        ),
+      ],
+    );
+  }
+}
+
+// ==========================================
+//  5. 乘客專用點名視窗 (PassengerManifestDialog)
 // ==========================================
 class PassengerManifestDialog extends StatefulWidget {
   final List<String> members;
@@ -374,7 +639,7 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
 }
 
 // ==========================================
-//  4. 司機專用點名視窗 (DriverManifestDialog)
+//  6. 司機專用點名視窗 (DriverManifestDialog)
 // ==========================================
 class DriverManifestDialog extends StatefulWidget {
   final List<String> passengers;

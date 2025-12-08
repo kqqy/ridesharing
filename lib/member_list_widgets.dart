@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
+import 'stats_page.dart'; // [新增] 引入個人統計頁面
 
 // ==========================================
 //  1. 成員列表單項 (MemberListItem)
-//  負責繪製單一成員的姓名、角色和在線狀態，並處理點擊事件。
 // ==========================================
 class MemberListItem extends StatelessWidget {
   final String role;
@@ -84,7 +84,7 @@ class MemberListItem extends StatelessWidget {
 
 // ==========================================
 //  2. UI 元件：成員詳細資訊視窗 (MemberDetailsDialog)
-//  彈出視窗內容：違規、放鳥、評價、(司機專屬的車種車牌)。
+//  [修改] 使用 Stack 在右上角加入「詳細資訊」按鈕
 // ==========================================
 class MemberDetailsDialog extends StatelessWidget {
   final Map<String, dynamic> details;
@@ -117,71 +117,113 @@ class MemberDetailsDialog extends StatelessWidget {
     final bool isDriver = details['isDriver'] ?? false;
     final double rating = details['rating'] ?? 0.0;
     
-    return AlertDialog(
+    // 使用 Dialog + Stack 自定義佈局
+    return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      title: Center(
-        child: Text(
-          details['name'] ?? '成員詳情',
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
-        ),
-      ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Divider(),
-            const SizedBox(height: 10),
-
-            // 1. 違規/放鳥次數
-            _buildInfoRow('違規次數', '${details['violations'] ?? 0} 次', valueColor: Colors.red),
-            _buildInfoRow('放鳥次數', '${details['flakes'] ?? 0} 次', valueColor: Colors.red),
-            const Divider(height: 20),
-
-            // 2. 評價 (星等與星數)
-            const Text('平均評價', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Row(
+      child: Stack(
+        children: [
+          // 1. 主要內容區塊
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 40, 20, 20), // Top padding 加大，避開右上按鈕
+            child: Column(
+              mainAxisSize: MainAxisSize.min, // 依內容高度
               children: [
-                // 顯示五顆星星
-                Row(
-                  children: List.generate(5, (index) {
-                    return Icon(
-                      index < rating.floor() ? Icons.star : Icons.star_border,
-                      color: Colors.amber,
-                      size: 24,
-                    );
-                  }),
+                // 標題
+                Center(
+                  child: Text(
+                    details['name'] ?? '成員詳情',
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+                  ),
                 ),
-                const SizedBox(width: 8),
-                Text(rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 10),
+                const Divider(),
+                const SizedBox(height: 10),
+
+                // 內容資訊
+                _buildInfoRow('違規次數', '${details['violations'] ?? 0} 次', valueColor: Colors.red),
+                const Divider(height: 20),
+
+                // 評價
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('平均評價', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                const SizedBox(height: 5),
+                Row(
+                  children: [
+                    Row(
+                      children: List.generate(5, (index) {
+                        return Icon(
+                          index < rating.floor() ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 24,
+                        );
+                      }),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(rating.toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+                const Divider(height: 20),
+
+                // 司機資訊
+                if (isDriver) ...[
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('車輛資訊', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildInfoRow('車種', details['car_model'] ?? 'N/A'),
+                  _buildInfoRow('車牌', details['license_plate'] ?? 'N/A'),
+                  const SizedBox(height: 20),
+                ],
+
+                // 關閉按鈕
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('關閉', style: TextStyle(fontSize: 16)),
+                  ),
+                ),
               ],
             ),
-            const Divider(height: 20),
+          ),
 
-            // 3. 司機專屬資訊
-            if (isDriver) ...[
-              const Text('車輛資訊', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 8),
-              _buildInfoRow('車種', details['car_model'] ?? 'N/A'),
-              _buildInfoRow('車牌', details['license_plate'] ?? 'N/A'),
-            ],
-          ],
-        ),
+          // 2. [新增] 右上角「詳細資訊」按鈕
+          Positioned(
+            top: 10,
+            right: 10,
+            child: InkWell(
+              onTap: () {
+                Navigator.pop(context); // 先關閉 Dialog
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const StatsPage()),
+                );
+              },
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: const Text(
+                  '詳細資訊',
+                  style: TextStyle(
+                    color: Colors.blue,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('關閉'),
-        ),
-      ],
-      actionsAlignment: MainAxisAlignment.center,
     );
   }
 }
 
 // ==========================================
 //  3. UI 元件：成員列表主體 (MemberListBody)
-//  負責整個頁面的 AppBar 和 ListView 佈局。
 // ==========================================
 class MemberListBody extends StatelessWidget {
   final List<Map<String, dynamic>> members;
