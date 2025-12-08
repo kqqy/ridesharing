@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
-import 'upcoming_widgets.dart'; 
+import 'upcoming_widgets.dart'; // 引入 UI 元件
 import 'chat_page.dart';        
 import 'active_trip_page.dart'; 
 
@@ -85,7 +85,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  // 顯示行程詳細資訊 Dialog
+  // 顯示行程詳細資訊 Dialog (內部函式)
   void _showTripDetails(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王大明', 'role': '司機', 'rating': 4.9},
@@ -101,10 +101,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  // [修改] 處理詳細資訊點擊 (判斷是否顯示選單)
+  // 處理詳細資訊點擊 (判斷是否顯示選單)
   void _handleTripDetail(Trip trip) {
     // 假設 List 中的第二筆行程 (_upcomingTrips[1]) 是使用者自己創建的
-    // 這與 UpcomingBody 中的 isFirstCard 判斷邏輯對應 (index > 0)
+    // 這與 UpcomingBody 中的 isCreatedByMe 邏輯對應 (index > 0)
     bool isCreatedByMe = !widget.isDriver && _upcomingTrips.indexOf(trip) > 0;
 
     if (isCreatedByMe) {
@@ -119,7 +119,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               onPressed: () {
                 Navigator.pop(context);
-                _showTripDetails(trip); // 顯示原有的詳細資訊
+                _showTripDetails(trip); 
               },
               child: const Row(
                 children: [

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
-import 'passenger_widgets.dart'; // 借用 PassengerTripCard 的樣式
-import 'stats_page.dart'; // [新增] 引入統計頁面
+import 'passenger_widgets.dart'; // 借用 PassengerTripCard
+import 'stats_page.dart'; // 引入統計頁面 (為了成員詳細資料跳轉)
 
 // ==========================================
-//  1. UI 元件：即將出發行程的整頁介面 (通用版)
+//  1. UI 元件：即將出發行程的整頁介面 (UpcomingBody)
 // ==========================================
 class UpcomingBody extends StatelessWidget {
   final bool isDriver; 
@@ -45,6 +45,7 @@ class UpcomingBody extends StatelessWidget {
               itemBuilder: (context, index) {
                 final trip = upcomingTrips[index];
                 
+                // 邏輯：第一張卡片是參加別人的(不能出發)，後面的是自己創的(可出發)
                 final bool isFirstCard = index == 0;
 
                 String cancelBtnText;
@@ -65,6 +66,9 @@ class UpcomingBody extends StatelessWidget {
                   }
                 }
 
+                // 判斷是否為自己創建的行程 (乘客端且不是第一張)
+                bool isCreatedByMe = !isDriver && !isFirstCard;
+
                 Widget card = PassengerTripCard(
                   trip: trip,
                   onDetailTap: () => onDetailTap(trip),
@@ -73,9 +77,12 @@ class UpcomingBody extends StatelessWidget {
                   cancelText: cancelBtnText,
                   onDepart: departAction, 
                   onCancel: () => onCancelTrip(trip),
+                  
+                  // 如果是自己創建的卡片，直接顯示紅點
+                  hasNotification: isCreatedByMe,
                 );
 
-                if (!isDriver && !isFirstCard) {
+                if (isCreatedByMe) {
                   return Stack(
                     children: [
                       card,
@@ -277,14 +284,13 @@ class JoinRequestsDialog extends StatefulWidget {
 }
 
 class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
-  // 假資料
   final List<Map<String, dynamic>> _requests = [
     {
       'id': 1, 
       'name': '新成員 A', 
       'rating': 4.5,
-      'violation': 0, // 違規次數
-      'noShow': 2,    // 放鳥次數
+      'violation': 0, 
+      'noShow': 2,    
     },
     {
       'id': 2, 
@@ -301,7 +307,6 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
     });
   }
 
-  // 顯示成員詳細資料
   void _showMemberProfile(Map<String, dynamic> member) {
     showDialog(
       context: context,
@@ -342,7 +347,6 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                   itemBuilder: (context, index) {
                     final req = _requests[index];
                     return InkWell(
-                      // 點擊項目跳出成員詳細資料
                       onTap: () => _showMemberProfile(req),
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
@@ -375,12 +379,12 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                                 ],
                               ),
                             ),
-                            // 打勾按鈕 - 靜默
+                            // 打勾按鈕 (靜默)
                             IconButton(
                               icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
                               onPressed: () {},
                             ),
-                            // 打叉按鈕 - 靜默
+                            // 打叉按鈕 (靜默)
                             IconButton(
                               icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
                               onPressed: () {},
@@ -401,7 +405,6 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
 
 // ==========================================
 //  4. 成員資訊卡片 (MemberProfileDialog)
-//  [修改] 加上右上角「詳細資料」按鈕
 // ==========================================
 class MemberProfileDialog extends StatelessWidget {
   final String name;
@@ -424,13 +427,11 @@ class MemberProfileDialog extends StatelessWidget {
       backgroundColor: const Color(0xFFEBEFF5), 
       child: Stack(
         children: [
-          // 1. 主要內容
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 標題 (名字)
                 Text(
                   name,
                   style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
@@ -439,17 +440,11 @@ class MemberProfileDialog extends StatelessWidget {
                 const Divider(color: Colors.black12, thickness: 1),
                 const SizedBox(height: 15),
 
-                // 違規次數
                 _buildInfoRow('違規次數', '$violationCount 次'),
                 const SizedBox(height: 10),
-                // 放鳥次數
-                _buildInfoRow('放鳥次數', '$noShowCount 次'),
-                
-                const SizedBox(height: 20),
                 const Divider(color: Colors.black12, thickness: 1),
                 const SizedBox(height: 15),
 
-                // 平均評價
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -479,7 +474,6 @@ class MemberProfileDialog extends StatelessWidget {
                 const SizedBox(height: 30),
                 const Divider(color: Colors.black12, thickness: 1),
                 
-                // 關閉按鈕
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('關閉', style: TextStyle(color: Colors.blueGrey, fontSize: 16)),
@@ -488,13 +482,11 @@ class MemberProfileDialog extends StatelessWidget {
             ),
           ),
 
-          // 2. [新增] 右上角「詳細資料」按鈕
           Positioned(
             top: 10,
             right: 10,
             child: TextButton(
               onPressed: () {
-                // 關閉目前的 Dialog，然後跳轉到 StatsPage (個人統計)
                 Navigator.pop(context);
                 Navigator.push(
                   context, 

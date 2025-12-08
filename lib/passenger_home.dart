@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'passenger_widgets.dart'; 
+import 'passenger_widgets.dart'; // 引入乘客首頁 UI
 import 'trip_model.dart'; 
 import 'passenger_create_trip_page.dart'; 
 import 'upcoming_page.dart'; 
-import 'upcoming_widgets.dart'; 
-import 'history_page.dart'; // 引入 HistoryPage
+import 'upcoming_widgets.dart'; // 引入共用彈窗元件 (PassengerTripDetailsDialog)
+import 'history_page.dart'; 
 
 class PassengerHome extends StatefulWidget {
   final Color themeColor;
@@ -45,12 +45,12 @@ class _PassengerHomeState extends State<PassengerHome> {
     } else if (type == '歷史行程與統計') {
       Navigator.push(
         context,
-        // [修正] 移除 const，改為 HistoryPage()
         MaterialPageRoute(builder: (context) => const HistoryPage()),
       );
     }
   }
   
+  // 顯示行程詳細資訊 (使用 upcoming_widgets.dart 裡的共用元件)
   void _handleTripDetail(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王司機', 'role': '司機', 'rating': 4.7},
