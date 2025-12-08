@@ -48,8 +48,8 @@ class SettingsBody extends StatelessWidget {
           // [新增] 自動審核成員開關
           SwitchListTile(
             secondary: Icon(Icons.person_add_alt, color: Colors.blue[300]),
-            title: const Text('自動審核成員'),
-            subtitle: const Text('開啟後，系統將自動同意加入請求'),
+            title: const Text('審核要求'),
+            subtitle: const Text('關閉後，系統將自動同意加入請求'),
             value: isAutoApprove,
             onChanged: onAutoApproveChanged,
             activeColor: Colors.blue,
