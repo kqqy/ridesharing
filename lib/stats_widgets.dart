@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 
 // ==========================================
-//  UI 元件：五星評價顯示
+//  UI 元件：五星評價顯示 (大)
 // ==========================================
 class StarRatingDisplay extends StatelessWidget {
   final double rating;
   final int starCount;
+  final double iconSize; // [新增] 可調整大小
 
   const StarRatingDisplay({
     super.key,
     required this.rating,
     this.starCount = 5,
+    this.iconSize = 28,
   });
 
   Widget buildStar(BuildContext context, int index) {
@@ -25,23 +27,18 @@ class StarRatingDisplay extends StatelessWidget {
       icon = Icons.star;
     }
     
-    return Icon(icon, color: color, size: 28);
+    return Icon(icon, color: color, size: iconSize);
   }
 
   @override
   Widget build(BuildContext context) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.end, 
+      mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Row(
           children: List.generate(starCount, (index) {
             return buildStar(context, index);
           }),
-        ),
-        const SizedBox(width: 10),
-        Text(
-          rating.toStringAsFixed(1), 
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
       ],
     );
@@ -49,18 +46,77 @@ class StarRatingDisplay extends StatelessWidget {
 }
 
 // ==========================================
-//  UI 元件：個人統計主體 (通用)
+//  UI 元件：單則評論卡片 [新增]
 // ==========================================
-class StatsBody extends StatelessWidget { // [修改] 更名
+class ReviewCard extends StatelessWidget {
+  final String name;
+  final int rating;
+  final String comment;
+
+  const ReviewCard({
+    super.key,
+    required this.name,
+    required this.rating,
+    required this.comment,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  name, 
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                // 顯示該評論的星星
+                Row(
+                  children: List.generate(5, (index) {
+                    return Icon(
+                      index < rating ? Icons.star : Icons.star_border,
+                      color: Colors.amber,
+                      size: 18,
+                    );
+                  }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              comment,
+              style: TextStyle(color: Colors.grey[700], fontSize: 14, height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+//  UI 元件：個人統計主體 (StatsBody)
+// ==========================================
+class StatsBody extends StatelessWidget { 
   final int passengerTrips;
   final int driverTrips;
   final double averageRating;
+  final List<Map<String, dynamic>> reviews; // [新增] 接收評論資料
 
   const StatsBody({
     super.key,
     required this.passengerTrips,
     required this.driverTrips,
     required this.averageRating,
+    required this.reviews, // [新增]
   });
 
   Widget _buildStatRow(String label, String value, Color color) {
@@ -120,6 +176,7 @@ class StatsBody extends StatelessWidget { // [修改] 更名
             ),
             const Divider(height: 30, thickness: 2),
             
+            // 平均評價區塊
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween, 
               children: [
@@ -127,9 +184,34 @@ class StatsBody extends StatelessWidget { // [修改] 更名
                   '平均評價',
                   style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.orange),
                 ),
-                StarRatingDisplay(rating: averageRating), 
+                Row(
+                  children: [
+                    StarRatingDisplay(rating: averageRating),
+                    const SizedBox(width: 8),
+                    Text(
+                      averageRating.toStringAsFixed(1), 
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
               ],
             ),
+            
+            const SizedBox(height: 30),
+            
+            // [新增] 近期評論區塊
+            const Text(
+              '近期評論',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87),
+            ),
+            const SizedBox(height: 15),
+            
+            // 評論列表
+            ...reviews.map((r) => ReviewCard(
+              name: r['name'],
+              rating: r['rating'],
+              comment: r['comment'],
+            )),
           ],
         ),
       ),
