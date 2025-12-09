@@ -8,6 +8,7 @@ class AuthBody extends StatelessWidget {
   final TextEditingController emailController;
   final TextEditingController passwordController;
   final TextEditingController phoneController;
+  final TextEditingController nameController; // [新增] 姓名控制器
   final VoidCallback onToggleMode;
   final VoidCallback onSubmit;
 
@@ -17,6 +18,7 @@ class AuthBody extends StatelessWidget {
     required this.emailController,
     required this.passwordController,
     required this.phoneController,
+    required this.nameController, // [新增]
     required this.onToggleMode,
     required this.onSubmit,
   });
@@ -44,7 +46,7 @@ class AuthBody extends StatelessWidget {
               ),
               const SizedBox(height: 30),
 
-              // 基本資料欄位
+              // 電子郵件 (登入/註冊皆有)
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -56,7 +58,20 @@ class AuthBody extends StatelessWidget {
               ),
               const SizedBox(height: 16),
 
+              // [修改] 註冊模式專用欄位 (姓名 + 手機)
               if (!isLogin) ...[
+                // [新增] 姓名欄位
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: '姓名',
+                    prefixIcon: Icon(Icons.person_outline),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // 手機號碼欄位
                 TextField(
                   controller: phoneController,
                   keyboardType: TextInputType.phone,
@@ -69,6 +84,7 @@ class AuthBody extends StatelessWidget {
                 const SizedBox(height: 16),
               ],
 
+              // 密碼 (登入/註冊皆有)
               TextField(
                 controller: passwordController,
                 obscureText: true,

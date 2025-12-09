@@ -16,6 +16,7 @@ class _AuthPageState extends State<AuthPage> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController(); // [新增] 姓名控制器
 
   // 處理按鈕點擊
   Future<void> _handleSubmit() async {
@@ -36,7 +37,9 @@ class _AuthPageState extends State<AuthPage> {
         if (!mounted) return;
         setState(() {
           isLogin = true;
+          // 清空輸入框
           _passwordController.clear();
+          // 根據需求也可以清空姓名和手機，或保留方便使用者確認
         });
       }
     }
@@ -49,6 +52,7 @@ class _AuthPageState extends State<AuthPage> {
       emailController: _emailController,
       passwordController: _passwordController,
       phoneController: _phoneController,
+      nameController: _nameController, // [新增] 傳遞給 UI
       onToggleMode: () {
         setState(() {
           isLogin = !isLogin;
@@ -91,7 +95,6 @@ class _PassengerSettingsPageState extends State<PassengerSettingsPage> {
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('註冊成功'),
-        // 👇 修改這裡：只顯示簡單的成功訊息，不顯示興趣
         content: const Text('您的資料已設定完成！\n請使用剛剛的帳號登入。'), 
         actions: [
           TextButton(
