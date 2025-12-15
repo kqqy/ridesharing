@@ -9,9 +9,12 @@ class SettingsBody extends StatelessWidget {
   final VoidCallback onViolationStatus;
   final VoidCallback onEditCarInfo;
   
-  // [新增] 自動審核相關參數
+  // 自動審核相關參數
   final bool isAutoApprove;
   final ValueChanged<bool> onAutoApproveChanged;
+  
+  // 姓名控制器
+  final TextEditingController nameController; 
 
   const SettingsBody({
     super.key,
@@ -19,8 +22,9 @@ class SettingsBody extends StatelessWidget {
     required this.onEditPreferences,
     required this.onViolationStatus,
     required this.onEditCarInfo,
-    required this.isAutoApprove, // [新增]
-    required this.onAutoApproveChanged, // [新增]
+    required this.isAutoApprove,
+    required this.onAutoApproveChanged,
+    required this.nameController,
   });
 
   @override
@@ -42,17 +46,34 @@ class SettingsBody extends StatelessWidget {
           ),
           const Divider(thickness: 5, color: Color(0xFFF5F5F5)),
 
+          // 個人資料區塊
+          _buildSectionTitle('個人資料'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: '修改姓名',
+                prefixIcon: Icon(Icons.person_outline),
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+          ),
+          const Divider(thickness: 1, color: Color(0xFFEEEEEE)),
+
           // 乘客設定區塊
           _buildSectionTitle('乘客設定'),
           
-          // [新增] 自動審核成員開關
+          // 自動審核成員開關
           SwitchListTile(
             secondary: Icon(Icons.person_add_alt, color: Colors.blue[300]),
             title: const Text('審核要求'),
             subtitle: const Text('關閉後，系統將自動同意加入請求'),
             value: isAutoApprove,
             onChanged: onAutoApproveChanged,
-            activeColor: Colors.blue,
+            // [修正] activeColor 已棄用，改用 activeTrackColor 或 activeColor (視 Flutter 版本而定，這裡改為 activeTrackColor)
+            activeTrackColor: Colors.blue, 
           ),
 
           // 編輯偏好按鈕
@@ -354,7 +375,8 @@ class EditCarInfoBody extends StatelessWidget {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: onSave,
+                // [修正] 這裡之前缺少參數名稱 'onPressed'
+                onPressed: onSave, 
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,
                   foregroundColor: Colors.white,

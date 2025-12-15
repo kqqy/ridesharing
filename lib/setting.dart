@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'auth_page.dart'; 
-import 'setting_widgets.dart'; // [修正] 確保引入這個檔案
+import 'setting_widgets.dart'; // 引入 UI
 
 // ==========================================
 //  1. 設定列表頁面 (主入口)
-//  [修改] 改為 StatefulWidget 以管理開關狀態
 // ==========================================
 
 class SettingsPage extends StatefulWidget {
@@ -15,13 +14,16 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  // [新增] 自動審核狀態變數
+  // 自動審核狀態
   bool _isAutoApprove = false; 
+  
+  // [新增] 姓名控制器
+  final TextEditingController _nameController = TextEditingController(text: "王小明");
 
   @override
   Widget build(BuildContext context) {
     return SettingsBody(
-      // [新增] 傳遞狀態與更新函式
+      // 傳遞狀態與更新函式
       isAutoApprove: _isAutoApprove,
       onAutoApproveChanged: (value) {
         setState(() {
@@ -29,6 +31,9 @@ class _SettingsPageState extends State<SettingsPage> {
         });
       },
       
+      // [新增] 傳遞姓名控制器
+      nameController: _nameController,
+
       onLogout: () {
         Navigator.pushAndRemoveUntil(
           context,
@@ -58,6 +63,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+// ... (後續頁面 EditPreferencesPage, ViolationStatusPage, EditCarInfoPage 保持不變)
+// 為了版面簡潔，這裡我直接保留下方的程式碼，您只需覆蓋上面的 _SettingsPageState 即可。
+// 若要完全覆蓋檔案，請將之前的內容 (EditPreferencesPage 等) 複製貼上在下方。
+// 這裡提供完整的 setting.dart 檔案內容供您複製。
+
 // ==========================================
 //  2. 編輯偏好頁面
 // ==========================================
@@ -86,14 +96,9 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
     selectedVibe = '安靜';
   }
 
-  // [修正] 加入 mounted 檢查
   void _handleSave() async {
-    // 模擬存檔延遲
     await Future.delayed(const Duration(milliseconds: 500));
-    
-    // 檢查頁面是否還在，若不在則停止執行，避免報錯
     if (!mounted) return; 
-    
     Navigator.pop(context);
   }
 
@@ -134,7 +139,6 @@ class ViolationStatusPage extends StatelessWidget {
     const int violationCount = 0;
     const String status = "正常"; 
 
-    // 因為 ViolationStatusBody 是 StatelessWidget 且參數固定，這裡可以使用 const
     return const ViolationStatusBody(
       violationCount: violationCount, 
       status: status
@@ -157,12 +161,9 @@ class _EditCarInfoPageState extends State<EditCarInfoPage> {
   final TextEditingController _carModelController = TextEditingController(); 
   final TextEditingController _licensePlateController = TextEditingController();
 
-  // [修正] 加入 mounted 檢查
   void _handleSave() async {
     await Future.delayed(const Duration(milliseconds: 500));
-    
     if (!mounted) return;
-
     Navigator.pop(context);
   }
 
