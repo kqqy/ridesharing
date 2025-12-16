@@ -22,8 +22,6 @@ void _handleSOS() {
   Timer? timer;
 
 	Future<void> openDialer() async {
-		const String sosNumber = '119'; // 或 112
-
 		final uri = Uri.parse('tel:$sosNumber');
 
 		if (await canLaunchUrl(uri)) {
