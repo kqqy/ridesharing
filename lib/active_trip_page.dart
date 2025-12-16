@@ -21,14 +21,20 @@ void _handleSOS() {
   int sec = 2;
   Timer? timer;
 
-  Future<void> openDialer() async {
-    final uri = Uri(scheme: 'tel', path: sosNumber);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri); // ✅ 跳到系統撥號畫面
-    } else {
-      debugPrint('無法開啟撥號畫面：$uri');
-    }
-  }
+	Future<void> openDialer() async {
+		const String sosNumber = '119'; // 或 112
+
+		final uri = Uri.parse('tel:$sosNumber');
+
+		if (await canLaunchUrl(uri)) {
+			await launchUrl(
+				uri,
+				mode: LaunchMode.externalApplication, // ⭐ 一定要
+			);
+		} else {
+			debugPrint('❌ 無法開啟撥號畫面：$uri');
+		}
+	}
 
   showDialog(
     context: context,

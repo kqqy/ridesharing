@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:ridesharing/chat_widgets.dart';
 import 'passenger_widgets.dart'; 
 import 'trip_model.dart'; 
 import 'passenger_create_trip_page.dart'; 
@@ -34,7 +35,7 @@ class _PassengerHomeState extends State<PassengerHome> {
       _showManageMenu = !_showManageMenu; 
     });
   }
-
+  
   void _handleMenuSelection(String type) {
     _closeMenu(); 
     if (type == '即將出發行程') {
@@ -66,7 +67,17 @@ class _PassengerHomeState extends State<PassengerHome> {
   }
 
   void _handleJoinTrip(Trip trip) {
-    // 靜默
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatBody(
+          tripMembers: const [],   // 先空資料，之後再接 Supabase
+          onMemberListTap: () {
+            // 之後可以打開成員列表
+          },
+        ),
+      ),
+    );
   }
 
   // 建立行程
