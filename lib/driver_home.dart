@@ -20,9 +20,9 @@ class _DriverHomeState extends State<DriverHome> {
   Trip? _currentActiveTrip; 
   
   final List<Trip> _exploreTrips = [
-    Trip(origin: '台中市政府', destination: '勤美誠品', time: '12-08 14:00', seats: '2/4', note: '徵求共乘'),
-    Trip(origin: '逢甲夜市', destination: '高鐵台中站', time: '12-08 18:30', seats: '3/4', note: '行李箱可放'),
-    Trip(origin: '新光三越', destination: '台中火車站', time: '12-09 10:00', seats: '1/4', note: '準時出發'),
+    Trip(id: 'driver_fake_1', origin: '台中市政府', destination: '勤美誠品', departTime: DateTime.parse('2025-12-08 14:00'), seatsTotal: 4, seatsLeft: 2, status: 'open', note: '徵求共乘'),
+    Trip(id: 'driver_fake_2', origin: '逢甲夜市', destination: '高鐵台中站', departTime: DateTime.parse('2025-12-08 18:30'), seatsTotal: 4, seatsLeft: 3, status: 'open', note: '行李箱可放'),
+    Trip(id: 'driver_fake_3', origin: '新光三越', destination: '台中火車站', departTime: DateTime.parse('2025-12-09 10:00'), seatsTotal: 4, seatsLeft: 1, status: 'open', note: '準時出發'),
   ];
 
   void _closeAllDialogs() {

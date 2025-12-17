@@ -16,8 +16,8 @@ class UpcomingPage extends StatefulWidget {
 class _UpcomingPageState extends State<UpcomingPage> {
   // 假資料
   final List<Trip> _upcomingTrips = [
-    Trip(origin: '台北車站', destination: '市政府', time: '2025-12-06 14:30', seats: '1/3', note: '無'),
-    Trip(origin: '新竹科學園區', destination: '桃園高鐵站', time: '2025-12-07 08:00', seats: '2/4', note: '希望乘客不要吃東西'),
+    Trip(id: 'upcoming_fake_1', origin: '台北車站', destination: '市政府', departTime: DateTime.parse('2025-12-06 14:30'), seatsTotal: 3, seatsLeft: 1, status: 'open', note: '無'),
+    Trip(id: 'upcoming_fake_2', origin: '新竹科學園區', destination: '桃園高鐵站', departTime: DateTime.parse('2025-12-07 08:00'), seatsTotal: 4, seatsLeft: 2, status: 'open', note: '希望乘客不要吃東西'),
   ];
 
   // 處理取消/離開
