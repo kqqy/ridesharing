@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'passenger_create_trip_widgets.dart'; // 引入 UI
+import 'passenger_create_trip_widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final supabase = Supabase.instance.client;
+
 class PassengerCreateTripPage extends StatefulWidget {
   const PassengerCreateTripPage({super.key});
 
@@ -11,14 +12,14 @@ class PassengerCreateTripPage extends StatefulWidget {
 }
 
 class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
-  // 建立控制器
   final TextEditingController _originController = TextEditingController();
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _timeController = TextEditingController();
-  final TextEditingController _seatsController = TextEditingController(text: '4'); // 預設固定為 4
+  final TextEditingController _seatsController =
+      TextEditingController(text: '4'); // 預設固定 4
   final TextEditingController _noteController = TextEditingController();
-  DateTime? _selectedDepartTime; // ✅ 真正要寫進資料庫的時間
 
+  DateTime? _selectedDepartTime;
 
   @override
   void dispose() {
@@ -30,53 +31,45 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
     super.dispose();
   }
 
-  // 處理時間選擇
-Future<void> _handleTimePicker() async {
-  DateTime? pickedDate = await showDatePicker(
-    context: context,
-    initialDate: DateTime.now(),
-    firstDate: DateTime.now(),
-    lastDate: DateTime(2100),
-  );
+  Future<void> _handleTimePicker() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+    );
+    if (pickedDate == null) return;
+    if (!mounted) return;
 
-  if (pickedDate == null) return;
-  if (!mounted) return;
+    final TimeOfDay? pickedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+    if (pickedTime == null) return;
 
-  TimeOfDay? pickedTime = await showTimePicker(
-    context: context,
-    initialTime: TimeOfDay.now(),
-  );
+    final selected = DateTime(
+      pickedDate.year,
+      pickedDate.month,
+      pickedDate.day,
+      pickedTime.hour,
+      pickedTime.minute,
+    );
 
-  if (pickedTime == null) return;
+    final String formattedStr =
+        "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')} "
+        "${pickedTime.hour.toString().padLeft(2, '0')}:${pickedTime.minute.toString().padLeft(2, '0')}";
 
-  // ✅ 這個才是「真正的時間」，之後 insert 會用它
-  final selected = DateTime(
-    pickedDate.year,
-    pickedDate.month,
-    pickedDate.day,
-    pickedTime.hour,
-    pickedTime.minute,
-  );
+    setState(() {
+      _selectedDepartTime = selected;
+      _timeController.text = formattedStr;
+    });
+  }
 
-  final String formattedStr =
-      "${pickedDate.year}-${pickedDate.month.toString().padLeft(2, '0')}-${pickedDate.day.toString().padLeft(2, '0')} "
-      "${pickedTime.hour.toString().padLeft(2, '0')}:${pickedTime.minute.toString().padLeft(2, '0')}";
-
-  setState(() {
-    _selectedDepartTime = selected;   // ✅ 多存這行（重點）
-    _timeController.text = formattedStr;
-  });
-}
-
-
-    // [修改] 處理送出：不檢查內容，不跳提示，直接關閉
   Future<void> _handleSubmit() async {
-    // 1️⃣ 讀取輸入欄位
     final String origin = _originController.text.trim();
     final String destination = _destinationController.text.trim();
     final String note = _noteController.text.trim();
 
-    // 2️⃣ 基本檢查（出發地 / 目的地）
     if (origin.isEmpty || destination.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請填寫出發地與目的地')),
@@ -84,7 +77,6 @@ Future<void> _handleTimePicker() async {
       return;
     }
 
-    // 3️⃣ 檢查是否有選擇時間
     final DateTime? departTime = _selectedDepartTime;
     if (departTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -93,15 +85,32 @@ Future<void> _handleTimePicker() async {
       return;
     }
 
-    // 4️⃣ 座位數（從 TextField 轉成 int）
-    final int seatsTotal =
-        int.tryParse(_seatsController.text.trim()) ?? 4;
+    final int seatsTotal = int.tryParse(_seatsController.text.trim()) ?? 4;
 
-    // 5️⃣ 目前先用固定 creator_id（之後可換成 auth）
-    const String creatorId = '11111111-1111-1111-1111-111111111111';
+    // ✅ 1) 取得目前登入者
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('請先登入再建立行程')),
+      );
+      return;
+    }
+    final String creatorId = user.id;
 
     try {
-      // 6️⃣ 寫入 Supabase trips
+      // ✅ 2) 保險：先確保 public.users 有這個人（避免 trips 外鍵炸掉）
+      // 依你的表結構：users 有 nickname / email / phone（phone 若沒有就不寫）
+      final String fallbackNickname =
+          (user.email?.split('@').first ?? 'user').trim();
+
+      await supabase.from('users').upsert({
+        'id': creatorId,
+        if (user.email != null) 'email': user.email,
+        'nickname': fallbackNickname,
+        // phone 你如果要寫，這裡需要你有 phone 來源（通常註冊時存）
+      });
+
+      // ✅ 3) 寫入 trips
       await supabase.from('trips').insert({
         'creator_id': creatorId,
         'origin': origin,
@@ -113,18 +122,19 @@ Future<void> _handleTimePicker() async {
         'note': note,
       });
 
-      // 7️⃣ 成功後回到上一頁
       if (!mounted) return;
       Navigator.pop(context, true);
-
+    } on PostgrestException catch (e) {
+      // PostgREST 更容易看懂
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('建立行程失敗（DB）：${e.message}')),
+      );
     } catch (e) {
-      // 8️⃣ 失敗處理
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('建立行程失敗：$e')),
       );
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
