@@ -153,6 +153,8 @@ void _handleSOS() {
   @override
   Widget build(BuildContext context) {
     return ActiveTripBody(
+      origin: '逢甲夜市',          // 這裡換成你 trips 讀到的 origin
+      destination: '台中車站',    // 這裡換成你 trips 讀到的 destination
       onSOS: _handleSOS,
       onArrived: _handleArrived,
       onShare: _handleShare,
