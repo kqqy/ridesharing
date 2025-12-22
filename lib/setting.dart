@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; 
 import 'auth_page.dart'; 
 import 'setting_widgets.dart'; // 引入 UI
+import 'violation_service.dart'; // [新增] 引入違規服務
 
 // ==========================================
 //  1. 設定列表頁面 (主入口)
@@ -77,7 +78,7 @@ class _SettingsPageState extends State<SettingsPage> {
         });
       },
       nameController: _nameController,
-      onNameSubmitted: _saveName, // 綁定 onSubmitted 事件
+      onNameSubmitted: _saveName, 
 
       onLogout: () async {
         await supabase.auth.signOut();
@@ -222,21 +223,62 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
   }
 }
 
-// ... (ViolationStatusPage 與 EditCarInfoPage 保持不變)
-
 // ==========================================
-//  3. 違規狀態頁面
+//  3. 違規狀態頁面 (修改為 Stateful 以讀取資料)
 // ==========================================
 
-class ViolationStatusPage extends StatelessWidget {
+class ViolationStatusPage extends StatefulWidget {
   const ViolationStatusPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    const int violationCount = 0;
-    const String status = "正常"; 
+  State<ViolationStatusPage> createState() => _ViolationStatusPageState();
+}
 
-    return const ViolationStatusBody(
+class _ViolationStatusPageState extends State<ViolationStatusPage> {
+  final _service = ViolationService();
+  final _supabase = Supabase.instance.client;
+
+  int violationCount = 0;
+  String status = "載入中...";
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStatus();
+  }
+
+  Future<void> _loadStatus() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final result = await _service.getViolationStatus(user.id);
+      if (mounted) {
+        setState(() {
+          violationCount = result['count'];
+          status = result['status'];
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Load violation status error: $e');
+      if (mounted) {
+        setState(() {
+          status = "讀取失敗";
+          isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    return ViolationStatusBody(
       violationCount: violationCount, 
       status: status
     );
