@@ -6,7 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 
 class ActiveTripPage extends StatefulWidget {
-  final String tripId; // ✅ 關鍵
+  final String tripId; // 關鍵
 
   const ActiveTripPage({
     super.key,

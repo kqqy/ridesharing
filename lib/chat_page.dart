@@ -25,6 +25,7 @@ class _ChatPageState extends State<ChatPage> {
   bool _loading = true;
 
   // ===== 假成員資料（先留，之後你會換成 trip_members）=====
+  //傳送訊息未修復
   final List<Map<String, dynamic>> _tripMembers = const [
     {'name': '司機', 'role': '司機', 'isOnline': true},
     {'name': '乘客 A', 'role': '乘客', 'isOnline': true},

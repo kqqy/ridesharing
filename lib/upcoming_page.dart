@@ -138,9 +138,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
           Navigator.pop(context);
           Navigator.push(
             context,
-              MaterialPageRoute(
-                builder: (_) => ActiveTripPage(tripId: trip.id), // ✅ 關鍵
-              ),
+            MaterialPageRoute(
+              builder: (_) => ActiveTripPage(tripId: trip.id), // ✅ 關鍵
+            ),
           );
         },
       ),

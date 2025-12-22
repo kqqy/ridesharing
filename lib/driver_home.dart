@@ -171,7 +171,7 @@ class _DriverHomeState extends State<DriverHome> {
       currentActiveTrip: _currentActiveTrip,
       isManageMenuVisible: _showManageMenu,
       exploreTrips: _exploreTrips,
-      //isExploreLoading: _loadingExplore, // 👉 若你的 UI 有 loading
+      //isExploreLoading: _loadingExplore,
       onJoinTrip: _handleJoinTrip,
       onExploreDetail: _handleExploreDetail,
       onManageTap: () =>
