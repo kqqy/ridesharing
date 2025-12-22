@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'trip_model.dart';
-import 'upcoming_widgets.dart'; // 引入 UI 元件
-import 'chat_page.dart';        
-import 'active_trip_page.dart'; 
+import 'upcoming_widgets.dart';
+import 'chat_page.dart';
+import 'active_trip_page.dart';
+
+final supabase = Supabase.instance.client;
 
 class UpcomingPage extends StatefulWidget {
-  final bool isDriver; 
+  final bool isDriver;
 
   const UpcomingPage({super.key, required this.isDriver});
 
@@ -14,26 +18,76 @@ class UpcomingPage extends StatefulWidget {
 }
 
 class _UpcomingPageState extends State<UpcomingPage> {
-  // 假資料
-  final List<Trip> _upcomingTrips = [
-    Trip(id: 'upcoming_fake_1', origin: '台北車站', destination: '市政府', departTime: DateTime.parse('2025-12-06 14:30'), seatsTotal: 3, seatsLeft: 1, status: 'open', note: '無'),
-    Trip(id: 'upcoming_fake_2', origin: '新竹科學園區', destination: '桃園高鐵站', departTime: DateTime.parse('2025-12-07 08:00'), seatsTotal: 4, seatsLeft: 2, status: 'open', note: '希望乘客不要吃東西'),
-  ];
+  List<Trip> _upcomingTrips = [];
+  bool _loading = true;
 
-  // 處理取消/離開
+  @override
+  void initState() {
+    super.initState();
+    _fetchUpcomingTrips();
+  }
+
+  // ===============================
+  // 從 Supabase 撈即將出發行程
+  // status: open / active
+  // ===============================
+  Future<void> _fetchUpcomingTrips() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+
+      final data = await supabase
+          .from('trips')
+          .select()
+          .or('status.eq.open,status.eq.active')
+          .order('depart_time');
+
+      final trips = (data as List).map<Trip>((e) {
+        return Trip(
+          id: e['id'].toString(),
+          origin: e['origin'] ?? '',
+          destination: e['destination'] ?? '',
+          departTime: DateTime.parse(e['depart_time']),
+          seatsTotal: e['seats_total'] ?? 0,
+          seatsLeft: e['seats_left'] ?? 0,
+          status: e['status'] ?? '',
+          note: e['note'] ?? '',
+        );
+      }).toList();
+
+      setState(() {
+        _upcomingTrips = trips;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('fetch upcoming trips error: $e');
+      setState(() => _loading = false);
+    }
+  }
+
+  // ===============================
+  // 取消 / 離開行程（目前只做 UI）
+  // ===============================
   void _handleCancelTrip(Trip trip) {
     String title = widget.isDriver ? '確定取消行程？' : '⚠️ 退出警告';
-    Widget content = widget.isDriver 
+    Widget content = widget.isDriver
         ? const Text('取消後將通知所有乘客，且無法復原。')
         : const Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('若在六小時內退出，', style: TextStyle(fontSize: 16)),
-              SizedBox(height: 5),
-              Text('將會有放鳥紀錄！', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
-            ],
-          );
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('若在六小時內退出，', style: TextStyle(fontSize: 16)),
+        SizedBox(height: 5),
+        Text(
+          '將會有放鳥紀錄！',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.red,
+          ),
+        ),
+      ],
+    );
 
     showDialog(
       context: context,
@@ -44,7 +98,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
         actions: [
           ElevatedButton(
             onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('確定'),
           ),
           TextButton(
@@ -52,20 +109,23 @@ class _UpcomingPageState extends State<UpcomingPage> {
             child: const Text('取消', style: TextStyle(color: Colors.grey)),
           ),
         ],
-        actionsAlignment: MainAxisAlignment.end,
       ),
     );
   }
 
-  // 處理聊天室
+  // ===============================
+  // 行程聊天室
+  // ===============================
   void _handleChatTrip(Trip trip) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const ChatPage()),
+      MaterialPageRoute(builder: (_) =>ChatPage(tripId: trip.id)),
     );
   }
 
-  // 處理出發 (乘客端)
+  // ===============================
+  // 乘客出發 → 進行中
+  // ===============================
   void _handleDepartTrip(Trip trip) {
     final List<String> tripMembers = ['司機', '我 (乘客)', '乘客 B'];
 
@@ -75,17 +135,25 @@ class _UpcomingPageState extends State<UpcomingPage> {
       builder: (context) => PassengerManifestDialog(
         members: tripMembers,
         onConfirm: () {
-          Navigator.pop(context); 
+          Navigator.pop(context);
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const ActiveTripPage()),
+              MaterialPageRoute(
+                builder: (_) => ActiveTripPage(tripId: trip.id), // ✅ 關鍵
+              ),
           );
         },
       ),
     );
   }
 
-  // 顯示行程詳細資訊 Dialog (內部函式)
+  // ===============================
+  // 行程詳細資訊
+  // ===============================
+  void _handleTripDetail(Trip trip) {
+    _showTripDetails(trip);
+  }
+
   void _showTripDetails(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王大明', 'role': '司機', 'rating': 4.9},
@@ -101,70 +169,23 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  // 處理詳細資訊點擊 (判斷是否顯示選單)
-  void _handleTripDetail(Trip trip) {
-    // 假設 List 中的第二筆行程 (_upcomingTrips[1]) 是使用者自己創建的
-    // 這與 UpcomingBody 中的 isCreatedByMe 邏輯對應 (index > 0)
-    bool isCreatedByMe = !widget.isDriver && _upcomingTrips.indexOf(trip) > 0;
-
-    if (isCreatedByMe) {
-      // 顯示 Popover 選單
-      showDialog(
-        context: context,
-        builder: (context) => SimpleDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: const Text('行程選項'),
-          children: [
-            SimpleDialogOption(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              onPressed: () {
-                Navigator.pop(context);
-                _showTripDetails(trip); 
-              },
-              child: const Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue),
-                  SizedBox(width: 10),
-                  Text('行程詳細資訊', style: TextStyle(fontSize: 16)),
-                ],
-              ),
-            ),
-            SimpleDialogOption(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              onPressed: () {
-                Navigator.pop(context);
-                // 顯示加入要求視窗
-                showDialog(
-                  context: context,
-                  builder: (context) => const JoinRequestsDialog(),
-                );
-              },
-              child: const Row(
-                children: [
-                  Icon(Icons.person_add_alt_1, color: Colors.orange),
-                  SizedBox(width: 10),
-                  Text('加入要求', style: TextStyle(fontSize: 16)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    } else {
-      // 不是自己創建的，直接顯示詳細資訊
-      _showTripDetails(trip);
-    }
-  }
-
+  // ===============================
+  // UI
+  // ===============================
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return UpcomingBody(
-      isDriver: widget.isDriver, 
+      isDriver: widget.isDriver,
       upcomingTrips: _upcomingTrips,
       onCancelTrip: _handleCancelTrip,
       onChatTrip: _handleChatTrip,
       onDetailTap: _handleTripDetail,
-      // 乘客端：傳入出發函式；司機端：null
       onDepartTrip: widget.isDriver ? null : _handleDepartTrip,
     );
   }

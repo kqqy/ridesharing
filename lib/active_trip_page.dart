@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
-import 'active_trip_widgets.dart'; // 引入 UI
-import 'chat_page.dart'; // 引入聊天室
-import 'rating_page.dart'; // [修正] 引入更名後的評價頁面
+import 'active_trip_widgets.dart';
+import 'chat_page.dart';
+import 'rating_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 
-
 class ActiveTripPage extends StatefulWidget {
-  const ActiveTripPage({super.key});
+  final String tripId; // ✅ 關鍵
+
+  const ActiveTripPage({
+    super.key,
+    required this.tripId,
+  });
 
   @override
   State<ActiveTripPage> createState() => _ActiveTripPageState();
@@ -15,102 +19,84 @@ class ActiveTripPage extends StatefulWidget {
 
 class _ActiveTripPageState extends State<ActiveTripPage> {
 
-  // 處理 SOS 求救
-void _handleSOS() {
-  const String sosNumber = '222'; // ✅ 改成 119 / 112 / 你的客服
-  int sec = 2;
-  Timer? timer;
+  // ===============================
+  // SOS
+  // ===============================
+  void _handleSOS() {
+    const String sosNumber = '222';
+    int sec = 2;
+    Timer? timer;
 
-	Future<void> openDialer() async {
-		final uri = Uri.parse('tel:$sosNumber');
+    Future<void> openDialer() async {
+      final uri = Uri.parse('tel:$sosNumber');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
 
-		if (await canLaunchUrl(uri)) {
-			await launchUrl(
-				uri,
-				mode: LaunchMode.externalApplication, // ⭐ 一定要
-			);
-		} else {
-			debugPrint('❌ 無法開啟撥號畫面：$uri');
-		}
-	}
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            timer ??= Timer.periodic(const Duration(seconds: 1), (t) async {
+              if (sec <= 1) {
+                t.cancel();
+                if (Navigator.canPop(dialogCtx)) Navigator.pop(dialogCtx);
+                await openDialer();
+              } else {
+                sec--;
+                setDialogState(() {});
+              }
+            });
 
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogCtx) {
-      return StatefulBuilder(
-        builder: (context, setDialogState) {
-          timer ??= Timer.periodic(const Duration(seconds: 1), (t) async {
-            if (sec <= 1) {
-              t.cancel();
-              if (Navigator.canPop(dialogCtx)) Navigator.pop(dialogCtx);
-              await openDialer(); // ✅ 倒數完自動跳撥號
-            } else {
-              sec--;
-              setDialogState(() {});
-            }
-          });
-
-          return AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            title: const Center(
-              child: Text(
-                '確定要撥打求救電話?',
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+            return AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              title: const Center(
+                child: Text('確定要撥打求救電話?', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
               ),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '倒數 $sec 秒',
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.redAccent,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text('倒數結束後會自動開啟撥號畫面'),
-              ],
-            ),
-            actions: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  OutlinedButton(
-                    onPressed: () {
-                      timer?.cancel();
-                      Navigator.pop(dialogCtx);
-                    },
-                    child: const Text('取消'),
-                  ),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                    ),
-                    onPressed: () async {
-                      timer?.cancel();
-                      Navigator.pop(dialogCtx);
-                      await openDialer(); // ✅ 立刻跳撥號
-                    },
-                    child: const Text('立刻開啟撥號'),
-                  ),
+                  Text('倒數 $sec 秒', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.redAccent)),
+                  const SizedBox(height: 8),
+                  const Text('倒數結束後會自動開啟撥號畫面'),
                 ],
               ),
-            ],
-          );
-        },
-      );
-    },
-  ).then((_) {
-    timer?.cancel(); // ✅ 任何方式關掉 dialog 都保證停掉 timer
-  });
-}
+              actions: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () {
+                        timer?.cancel();
+                        Navigator.pop(dialogCtx);
+                      },
+                      child: const Text('取消'),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                      onPressed: () async {
+                        timer?.cancel();
+                        Navigator.pop(dialogCtx);
+                        await openDialer();
+                      },
+                      child: const Text('立刻開啟撥號'),
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) => timer?.cancel());
+  }
 
-
-  // [修改] 處理已到達：導向評價頁面
+  // ===============================
+  // 到達 → 評價
+  // ===============================
   void _handleArrived() {
     showDialog(
       context: context,
@@ -121,12 +107,10 @@ void _handleSOS() {
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); // 1. 關閉 Dialog
-              
-              // 2. 跳轉到評價頁面 (使用 pushReplacement 避免使用者按返回鍵回到行程中)
+              Navigator.pop(context);
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => const RatingPage()), // [修正] 跳轉至 RatingPage
+                MaterialPageRoute(builder: (_) => const RatingPage()),
               );
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
@@ -137,24 +121,27 @@ void _handleSOS() {
     );
   }
 
-  // 處理分享行程 (靜默)
   void _handleShare() {
-    print('分享行程連結... (靜默模式)');
+    debugPrint('分享行程連結');
   }
 
-  // 處理聊天室
+  // ===============================
+  // 聊天室（重點）
+  // ===============================
   void _handleChat() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const ChatPage()),
+      MaterialPageRoute(
+        builder: (_) => ChatPage(tripId: widget.tripId), // ✅ 正確
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return ActiveTripBody(
-      origin: '逢甲夜市',          // 這裡換成你 trips 讀到的 origin
-      destination: '台中車站',    // 這裡換成你 trips 讀到的 destination
+      origin: '逢甲夜市',        // 之後改成 DB
+      destination: '台中車站',  // 之後改成 DB
       onSOS: _handleSOS,
       onArrived: _handleArrived,
       onShare: _handleShare,
