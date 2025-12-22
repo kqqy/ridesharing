@@ -14,7 +14,9 @@ class SettingsBody extends StatelessWidget {
   final ValueChanged<bool> onAutoApproveChanged;
   
   // 姓名控制器
-  final TextEditingController nameController; 
+  final TextEditingController nameController;
+  // [Modified] 為了不改變 UI 但能儲存，我們增加 onSubmitted 回調
+  final ValueChanged<String>? onNameSubmitted; 
 
   const SettingsBody({
     super.key,
@@ -25,6 +27,7 @@ class SettingsBody extends StatelessWidget {
     required this.isAutoApprove,
     required this.onAutoApproveChanged,
     required this.nameController,
+    this.onNameSubmitted, // Optional to match original signature style if possible, but logic needs it
   });
 
   @override
@@ -48,6 +51,7 @@ class SettingsBody extends StatelessWidget {
 
           // 個人資料區塊
           _buildSectionTitle('個人資料'),
+          // [還原] 移除 Row 與儲存按鈕，恢復原本的 TextField 樣式
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
             child: TextField(
@@ -58,6 +62,8 @@ class SettingsBody extends StatelessWidget {
                 border: OutlineInputBorder(),
                 contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
+              // 加入 onSubmitted 以便在不改變 UI 的情況下觸發儲存
+              onSubmitted: onNameSubmitted, 
             ),
           ),
           const Divider(thickness: 1, color: Color(0xFFEEEEEE)),
@@ -72,7 +78,6 @@ class SettingsBody extends StatelessWidget {
             subtitle: const Text('關閉後，系統將自動同意加入請求'),
             value: isAutoApprove,
             onChanged: onAutoApproveChanged,
-            // [修正] activeColor 已棄用，改用 activeTrackColor 或 activeColor (視 Flutter 版本而定，這裡改為 activeTrackColor)
             activeTrackColor: Colors.blue, 
           ),
 
@@ -375,7 +380,6 @@ class EditCarInfoBody extends StatelessWidget {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                // [修正] 這裡之前缺少參數名稱 'onPressed'
                 onPressed: onSave, 
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blue,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'home_page.dart'; // 引入首頁
 import 'auth_widgets.dart'; // 引入 UI 檔案
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'profile_setup_page.dart'; // [新增] 引入個人設定頁
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -92,17 +93,17 @@ Future<void> _handleSubmit() async {
       // ⭐ 建立 users / profiles 資料
       await supabase.from('users').insert({
         'id': user.id,
-        'email': email,        // users 表有 email :contentReference[oaicite:2]{index=2}
-        'phone': phone,        // users 表有 phone :contentReference[oaicite:3]{index=3}
-        'nickname': name,      // users 表是 nickname :contentReference[oaicite:4]{index=4}
-        'created_at': DateTime.now().toIso8601String(), // 表有 created_at :contentReference[oaicite:5]{index=5}
+        'email': email,        // users 表有 email
+        'phone': phone,        // users 表有 phone
+        'nickname': name,      // users 表是 nickname
+        'created_at': DateTime.now().toIso8601String(), // 表有 created_at
       });
 
 
-      // 進偏好設定頁
+      // [修改] 進偏好設定頁 (使用新的 ProfileSetupPage)
       final result = await Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const PassengerSettingsPage()),
+        MaterialPageRoute(builder: (context) => const ProfileSetupPage()),
       );
 
       if (result == true && mounted) {
@@ -136,80 +137,6 @@ Future<void> _handleSubmit() async {
         });
       },
       onSubmit: _handleSubmit,
-    );
-  }
-}
-
-// ==========================================
-//  👇 乘客設定頁面 (邏輯層)
-// ==========================================
-
-class PassengerSettingsPage extends StatefulWidget {
-  const PassengerSettingsPage({super.key});
-
-  @override
-  State<PassengerSettingsPage> createState() => _PassengerSettingsPageState();
-}
-
-class _PassengerSettingsPageState extends State<PassengerSettingsPage> {
-  // 1. 個性選項
-  final List<String> personalityList = ['社恐', 'I人', '普通', 'E人', '社牛'];
-  String? selectedPersonality;
-
-  // 2. 興趣選項
-  final List<String> interestOptions = [
-    '運動', '聽音樂', '手工藝', '攝影', '繪畫', '寫程式'
-  ];
-  List<String> selectedInterests = [];
-
-  // 3. 氣氛選項
-  final List<String> vibeOptions = ['安靜', '普通', '愛聊天'];
-  String selectedVibe = '普通';
-
-  void _handleConfirm() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('註冊成功'),
-        content: const Text('您的資料已設定完成！\n請使用剛剛的帳號登入。'), 
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // 關掉對話框
-              Navigator.pop(context, true); // 回傳 true
-            },
-            child: const Text('回到登入頁'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PassengerSettingsBody(
-      personalityList: personalityList,
-      selectedPersonality: selectedPersonality,
-      onPersonalityChanged: (val) => setState(() => selectedPersonality = val),
-      
-      interestOptions: interestOptions,
-      selectedInterests: selectedInterests,
-      onInterestToggle: (interest, selected) {
-        setState(() {
-          if (selected) {
-            selectedInterests.add(interest);
-          } else {
-            selectedInterests.remove(interest);
-          }
-        });
-      },
-      
-      vibeOptions: vibeOptions,
-      selectedVibe: selectedVibe,
-      onVibeChanged: (val) => setState(() => selectedVibe = val),
-      
-      onConfirm: _handleConfirm,
     );
   }
 }

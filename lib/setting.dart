@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_page.dart'; 
 import 'setting_widgets.dart'; // 引入 UI
 
@@ -14,27 +15,73 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
-  // 自動審核狀態
+  final supabase = Supabase.instance.client;
   bool _isAutoApprove = false; 
-  
-  // [新增] 姓名控制器
-  final TextEditingController _nameController = TextEditingController(text: "王小明");
+  final TextEditingController _nameController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final data = await supabase
+          .from('users')
+          .select('nickname')
+          .eq('id', user.id)
+          .single();
+      
+      if (mounted) {
+        setState(() {
+          _nameController.text = data['nickname'] ?? '';
+        });
+      }
+    } catch (e) {
+      debugPrint('Load profile error: $e');
+    }
+  }
+
+  Future<void> _saveName(String newName) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await supabase
+          .from('users')
+          .update({'nickname': newName.trim()})
+          .eq('id', user.id);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('姓名更新成功')));
+      }
+    } catch (e) {
+      debugPrint('Save name error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('儲存失敗: $e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return SettingsBody(
-      // 傳遞狀態與更新函式
       isAutoApprove: _isAutoApprove,
       onAutoApproveChanged: (value) {
         setState(() {
           _isAutoApprove = value;
         });
       },
-      
-      // [新增] 傳遞姓名控制器
       nameController: _nameController,
+      onNameSubmitted: _saveName, // 綁定 onSubmitted 事件
 
-      onLogout: () {
+      onLogout: () async {
+        await supabase.auth.signOut();
+        if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const AuthPage()),
@@ -63,11 +110,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
-// ... (後續頁面 EditPreferencesPage, ViolationStatusPage, EditCarInfoPage 保持不變)
-// 為了版面簡潔，這裡我直接保留下方的程式碼，您只需覆蓋上面的 _SettingsPageState 即可。
-// 若要完全覆蓋檔案，請將之前的內容 (EditPreferencesPage 等) 複製貼上在下方。
-// 這裡提供完整的 setting.dart 檔案內容供您複製。
-
 // ==========================================
 //  2. 編輯偏好頁面
 // ==========================================
@@ -80,30 +122,83 @@ class EditPreferencesPage extends StatefulWidget {
 }
 
 class _EditPreferencesPageState extends State<EditPreferencesPage> {
+  final supabase = Supabase.instance.client;
+
+  // 1. 個性選項
   final List<String> personalityList = ['社恐', 'I人', '普通', 'E人', '社牛'];
+  // 2. 興趣選項
   final List<String> interestOptions = ['運動', '聽音樂', '手工藝', '攝影', '繪畫', '寫程式'];
+  // 3. 氣氛選項
   final List<String> vibeOptions = ['安靜', '普通', '愛聊天'];
 
   String? selectedPersonality;
   List<String> selectedInterests = [];
   String selectedVibe = '普通';
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    selectedPersonality = 'I人';
-    selectedInterests = ['寫程式', '聽音樂'];
-    selectedVibe = '安靜';
+    _loadPreferences();
   }
 
-  void _handleSave() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return; 
-    Navigator.pop(context);
+  Future<void> _loadPreferences() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final data = await supabase
+          .from('users')
+          .select('mbti, interests, chat_preference')
+          .eq('id', user.id)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          selectedPersonality = data['mbti'];
+          final interestsStr = data['interests'] as String?;
+          if (interestsStr != null && interestsStr.isNotEmpty) {
+            selectedInterests = interestsStr.split(',');
+          }
+          selectedVibe = data['chat_preference'] ?? '普通';
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Load preferences error: $e');
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _handleSave() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await supabase.from('users').update({
+        'mbti': selectedPersonality,
+        'interests': selectedInterests.join(','),
+        'chat_preference': selectedVibe,
+      }).eq('id', user.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('個人偏好已更新')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Update preferences error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return EditPreferencesBody(
       personalityList: personalityList,
       interestOptions: interestOptions,
@@ -126,6 +221,8 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
     );
   }
 }
+
+// ... (ViolationStatusPage 與 EditCarInfoPage 保持不變)
 
 // ==========================================
 //  3. 違規狀態頁面
@@ -158,17 +255,71 @@ class EditCarInfoPage extends StatefulWidget {
 }
 
 class _EditCarInfoPageState extends State<EditCarInfoPage> {
+  final supabase = Supabase.instance.client;
   final TextEditingController _carModelController = TextEditingController(); 
   final TextEditingController _licensePlateController = TextEditingController();
+  bool isLoading = true;
 
-  void _handleSave() async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-    Navigator.pop(context);
+  @override
+  void initState() {
+    super.initState();
+    _loadCarInfo();
+  }
+
+  Future<void> _loadCarInfo() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final data = await supabase
+          .from('driver_profiles')
+          .select('car_type, license_plate')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (mounted) {
+        if (data != null) {
+          _carModelController.text = data['car_type'] ?? '';
+          _licensePlateController.text = data['license_plate'] ?? '';
+        }
+        setState(() => isLoading = false);
+      }
+    } catch (e) {
+      debugPrint('Load car info error: $e');
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _handleSave() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await supabase.from('driver_profiles').upsert({
+        'user_id': user.id,
+        'car_type': _carModelController.text.trim(),
+        'license_plate': _licensePlateController.text.trim(),
+        'created_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'user_id');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('車輛資訊已更新')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Update car info error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return EditCarInfoBody(
       carModelController: _carModelController,
       licensePlateController: _licensePlateController,
