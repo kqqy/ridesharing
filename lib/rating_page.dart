@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
-import 'rating_widgets.dart'; // [修正] 引入更名後的 UI
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'rating_widgets.dart';
 
-class RatingPage extends StatefulWidget { // [修改] 更名為 RatingPage
-  const RatingPage({super.key});
+class RatingPage extends StatefulWidget {
+  final String tripId; // ✅ 關鍵
+
+  const RatingPage({
+    super.key,
+    required this.tripId,
+  });
 
   @override
   State<RatingPage> createState() => _RatingPageState();
 }
 
 class _RatingPageState extends State<RatingPage> {
-  // 模擬需要評價的對象資料
+  final supabase = Supabase.instance.client;
+
+  // 你原本的 UI 假資料（完全不動）
   final List<Map<String, dynamic>> _targets = [
     {
       'name': '王大明',
@@ -27,44 +35,54 @@ class _RatingPageState extends State<RatingPage> {
 
   @override
   void dispose() {
-    for (var target in _targets) {
-      target['controller'].dispose();
+    for (var t in _targets) {
+      t['controller'].dispose();
     }
     super.dispose();
   }
 
-  void _updateRating(int index, int newRating) {
+  void _updateRating(int index, int rating) {
     setState(() {
-      _targets[index]['rating'] = newRating;
+      _targets[index]['rating'] = rating;
     });
   }
 
-  void _handleSubmit() {
-    // 這裡通常會呼叫 API 送出資料
-    print('評價完成！詳細資料如下：');
-    for (var target in _targets) {
-      print('${target['name']} (${target['role']}): ${target['rating']} 星, 評語: ${target['controller'].text}');
-    }
+  // ===============================
+  // ⭐ 行程生命週期終點
+  // ===============================
+  Future<void> _handleSubmit() async {
+    try {
+      // ✅ 結束行程
+      await supabase
+          .from('trips')
+          .update({'status': 'completed'})
+          .eq('id', widget.tripId);
 
-    // 完成後回到首頁 (清除所有堆疊回到最底層)
-    Navigator.of(context).popUntil((route) => route.isFirst);
+      // 回到首頁
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      debugPrint('結束行程失敗: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('結束行程失敗')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> cards = List.generate(_targets.length, (index) {
-      final target = _targets[index];
-      return RateMemberCard(
-        name: target['name'],
-        role: target['role'],
-        currentRating: target['rating'],
-        commentController: target['controller'],
-        onRatingChanged: (val) => _updateRating(index, val),
-      );
-    });
-
-    return RatingBody( // [修正] 使用 RatingBody
-      ratingCards: cards,
+    return RatingBody(
+      ratingCards: List.generate(_targets.length, (i) {
+        final t = _targets[i];
+        return RateMemberCard(
+          name: t['name'],
+          role: t['role'],
+          currentRating: t['rating'],
+          commentController: t['controller'],
+          onRatingChanged: (v) => _updateRating(i, v),
+        );
+      }),
       onSubmit: _handleSubmit,
     );
   }
