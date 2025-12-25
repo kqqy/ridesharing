@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/foundation.dart';
 
 class ViolationService {
   final supabase = Supabase.instance.client;
@@ -17,7 +18,7 @@ class ViolationService {
     return difference < 1;
   }
 
-  /// 記錄違規並更新停權狀態 (透過 Supabase RPC)
+  /// 記錄違規並更新停權狀態
   Future<void> recordViolation({
     required String userId,
     required String tripId,
@@ -25,13 +26,39 @@ class ViolationService {
     String? reason,
   }) async {
     try {
-      // 改用 rpc 呼叫後端的 handle_violation 函數
-      await supabase.rpc('handle_violation', params: {
-        'target_user_id': userId,
-        'trip_id_param': tripId,
-        'violation_type_param': violationType,
-        'reason_param': reason,
-      });
+      // 1. 嘗試記錄詳細違規資訊 (若 violations 表不存在可能失敗，但不影響計數)
+      try {
+        await supabase.from('violations').insert({
+          'user_id': userId,
+          'trip_id': tripId,
+          'type': violationType,
+          'reason': reason,
+          'created_at': DateTime.now().toIso8601String(),
+        });
+      } catch (e) {
+        debugPrint('Warning: Failed to insert into violations table (log might be missing): $e');
+      }
+
+      // 2. 更新使用者違規計數 (這是核心邏輯)
+      final data = await supabase
+          .from('suspensions')
+          .select()
+          .eq('user_id', userId)
+          .maybeSingle();
+
+      if (data != null) {
+        final currentCount = (data['violation_count'] as int?) ?? 0;
+        await supabase
+            .from('suspensions')
+            .update({'violation_count': currentCount + 1})
+            .eq('user_id', userId);
+      } else {
+        await supabase.from('suspensions').insert({
+          'user_id': userId,
+          'violation_count': 1,
+          'is_permanent': false,
+        });
+      }
     } catch (e) {
       throw '記錄違規失敗: $e';
     }
