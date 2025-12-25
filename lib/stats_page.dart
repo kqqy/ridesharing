@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'stats_widgets.dart'; // 引入通用 UI
+
+final supabase = Supabase.instance.client;
 
 class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
@@ -9,42 +12,98 @@ class StatsPage extends StatefulWidget {
 }
 
 class _StatsPageState extends State<StatsPage> {
-  // 假資料
-  final int _passengerTrips = 18;
-  final int _driverTrips = 5;
-  final double _averageRating = 4.3;
+  int _passengerTrips = 0;
+  int _driverTrips = 0;
+  double _averageRating = 0.0;
+  List<Map<String, dynamic>> _reviews = [];
+  bool _loading = true;
 
-  // [新增] 假的評論資料
-  final List<Map<String, dynamic>> _fakeReviews = [
-    {
-      'name': '陳小美',
-      'rating': 5,
-      'comment': '開車很穩，車內也很乾淨，非常愉快的共乘體驗！'
-    },
-    {
-      'name': '王大明',
-      'rating': 4,
-      'comment': '準時到達，但冷氣稍微有點強，其他都很棒。'
-    },
-    {
-      'name': 'Jason',
-      'rating': 5,
-      'comment': '人很好聊，還順路載我到巷口，大推！'
-    },
-    {
-      'name': '林小姐',
-      'rating': 3,
-      'comment': '有點小遲到，希望下次注意時間。'
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _fetchStats();
+  }
+
+  Future<void> _fetchStats() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // 1. 計算司機行程次數 (狀態為 completed)
+      final driverCount = await supabase
+          .from('trips')
+          .count()
+          .eq('driver_id', userId)
+          .eq('status', 'completed');
+
+      // 2. 計算乘客行程次數 (從 trip_members 算)
+      // 這裡簡單計算參與過的行程總數
+      final passengerCount = await supabase
+          .from('trip_members')
+          .count()
+          .eq('user_id', userId);
+
+      // 3. 取得評價資料 (計算平均分 + 顯示評論)
+      // 假設 ratings 表有關聯 profiles (透過 from_user_id)
+      final ratingsData = await supabase
+          .from('ratings')
+          .select('score, comment, created_at, profiles:from_user_id(name)')
+          .eq('to_user_id', userId)
+          .order('created_at', ascending: false);
+
+      double totalScore = 0;
+      List<Map<String, dynamic>> tempReviews = [];
+
+      if (ratingsData.isNotEmpty) {
+        for (var r in ratingsData) {
+          totalScore += (r['score'] as num).toDouble();
+          
+          // 只取有留言的顯示在列表，或全部顯示 (這裡取前 10 筆有留言的)
+          if (tempReviews.length < 10 && r['comment'] != null && r['comment'].toString().isNotEmpty) {
+            tempReviews.add({
+              'name': r['profiles']?['name'] ?? '匿名使用者',
+              'rating': r['score'],
+              'comment': r['comment'],
+            });
+          }
+        }
+        _averageRating = totalScore / ratingsData.length;
+      }
+
+      if (mounted) {
+        setState(() {
+          _driverTrips = driverCount;
+          _passengerTrips = passengerCount;
+          _reviews = tempReviews;
+          _loading = false;
+        });
+      }
+
+    } catch (e) {
+      debugPrint('Error fetching stats: $e');
+      if (mounted) {
+        setState(() => _loading = false);
+        // 發生錯誤時保持 0 或顯示錯誤訊息
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('讀取統計資料失敗')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return StatsBody(
       passengerTrips: _passengerTrips,
       driverTrips: _driverTrips,
       averageRating: _averageRating,
-      reviews: _fakeReviews, // [新增] 傳入評論
+      reviews: _reviews,
     );
   }
 }

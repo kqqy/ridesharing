@@ -108,7 +108,7 @@ class RateMemberCard extends StatelessWidget {
 // ==========================================
 //  UI 元件：評價頁面主體 (通用)
 // ==========================================
-class RatingBody extends StatelessWidget { // [修改] 更名為 RatingBody
+class RatingBody extends StatelessWidget { 
   final List<Widget> ratingCards; 
   final VoidCallback onSubmit;
 
