@@ -44,11 +44,11 @@ class _StatsPageState extends State<StatsPage> {
           .eq('user_id', userId);
 
       // 3. 取得評價資料 (計算平均分 + 顯示評論)
-      // 假設 ratings 表有關聯 profiles (透過 from_user_id)
+      // 假設 ratings 表有關聯 profiles (透過 from_user)
       final ratingsData = await supabase
           .from('ratings')
-          .select('score, comment, created_at, profiles:from_user_id(name)')
-          .eq('to_user_id', userId)
+          .select('rating, comment, created_at, profiles:from_user(name)')
+          .eq('to_user', userId)
           .order('created_at', ascending: false);
 
       double totalScore = 0;
@@ -56,13 +56,13 @@ class _StatsPageState extends State<StatsPage> {
 
       if (ratingsData.isNotEmpty) {
         for (var r in ratingsData) {
-          totalScore += (r['score'] as num).toDouble();
+          totalScore += (r['rating'] as num).toDouble();
           
           // 只取有留言的顯示在列表，或全部顯示 (這裡取前 10 筆有留言的)
           if (tempReviews.length < 10 && r['comment'] != null && r['comment'].toString().isNotEmpty) {
             tempReviews.add({
               'name': r['profiles']?['name'] ?? '匿名使用者',
-              'rating': r['score'],
+              'rating': r['rating'],
               'comment': r['comment'],
             });
           }

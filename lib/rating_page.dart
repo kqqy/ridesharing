@@ -124,16 +124,42 @@ class _RatingPageState extends State<RatingPage> {
     final currentUserId = supabase.auth.currentUser?.id;
     if (currentUserId == null) return;
 
+    // 檢查是否為假資料/Demo 模式
+    final bool isFakeTrip = widget.tripId.contains('fake');
+    final bool hasFakeTarget = _targets.any((t) => t['user_id'] == 'fake_1');
+
+    if (isFakeTrip || hasFakeTarget) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Demo 模式：已模擬送出評價')),
+        );
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (mounted) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+      }
+      return;
+    }
+
     try {
       // 1. 寫入 ratings 表
       final List<Map<String, dynamic>> ratingRows = _targets.map((t) {
+        String type;
+        if (currentUserId == _driverId) {
+          type = 'driver_to_passenger';
+        } else if (t['user_id'] == _driverId) {
+          type = 'passenger_to_driver';
+        } else {
+          type = 'passenger_to_passenger';
+        }
+
         return {
           'trip_id': widget.tripId,
-          'from_user_id': currentUserId,
-          'to_user_id': t['user_id'],
-          'score': t['rating'],
+          'from_user': currentUserId,
+          'to_user': t['user_id'],
+          'rating': t['rating'],
           'comment': t['controller'].text.trim(),
-          'role': t['role'] == '司機' ? 'driver' : 'passenger',
+          'rating_type': type,
         };
       }).toList();
 
