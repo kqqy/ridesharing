@@ -1,78 +1,92 @@
 import 'package:flutter/material.dart';
-import 'history_widgets.dart'; // 引入 HistoryBody
-import 'stats_page.dart'; // 引入統計頁面
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'history_widgets.dart';
+import 'stats_page.dart'; // ⭐ 你的個人統計頁
+import 'trip_model.dart';
+
+final supabase = Supabase.instance.client;
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key}); // 確保這裡是 const
+  const HistoryPage({super.key});
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  // 假資料
-  final List<Map<String, dynamic>> _historyTrips = [
-    {
-      'date': '2025-10-20', 
-      'time': '16:00',
-      'origin': '高雄火車站', 
-      'destination': '墾丁國家公園', 
-      'members_list': ['王司機 (D)', '乘客A', '乘客B'] 
-    },
-    {
-      'date': '2025-09-05', 
-      'time': '09:30',
-      'origin': '台中機場', 
-      'destination': '台北市區', 
-      'members_list': ['李司機 (D)', '乘客C']
-    },
-    {
-      'date': '2025-08-12', 
-      'time': '18:50',
-      'origin': '板橋', 
-      'destination': '新竹科學園區', 
-      'members_list': ['張司機 (D)', '乘客C', '乘客D', '乘客E']
-    },
-  ];
+  List<Map<String, dynamic>> _historyTrips = [];
+  bool _loading = true;
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchHistoryTrips();
+  }
+
+  // ===============================
+  // 撈歷史行程（completed / cancelled）
+  // ===============================
+  Future<void> _fetchHistoryTrips() async {
+    try {
+      final data = await supabase
+          .from('trips')
+          .select()
+          .or('status.eq.completed,status.eq.cancelled')
+          .order('depart_time', ascending: false);
+
+      final trips = (data as List).map<Map<String, dynamic>>((e) {
+        final dt = DateTime.parse(e['depart_time']);
+        return {
+          'id': e['id'],
+          'date': '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}',
+          'time': '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}',
+          'origin': e['origin'] ?? '',
+          'destination': e['destination'] ?? '',
+          'members_list': ['司機', '乘客'], // 之後接 trip_members
+        };
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _historyTrips = trips;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('fetch history error: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  // ===============================
+  // ⭐ 個人統計（重點）
+  // ===============================
   void _handleStatsTap() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => const StatsPage()),
-    );
-  }
-
-  void _handleCardTap(Map<String, dynamic> trip) {
-    List<Widget> details = [
-        Text('出發地：${trip['origin']}'),
-        Text('目的地：${trip['destination']}'),
-        const SizedBox(height: 10),
-        const Text('成員列表：', style: TextStyle(fontWeight: FontWeight.bold)),
-        ...?((trip['members_list'] as List<String>?)?.map((name) => Text(' - $name')).toList())
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('行程詳情 (${trip['date']})'),
-        content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: details,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('關閉')),
-        ],
+      MaterialPageRoute(
+        builder: (_) => const StatsPage(),
       ),
     );
   }
 
+  // 點擊單一歷史行程（目前先留空）
+  void _handleCardTap(Map<String, dynamic> trip) {
+    debugPrint('點擊歷史行程: ${trip['id']}');
+  }
+
   @override
   Widget build(BuildContext context) {
-    // 這裡呼叫的是 history_widgets.dart 中的 HistoryBody
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return HistoryBody(
       historyTrips: _historyTrips,
-      onStatsTap: _handleStatsTap,
+      onStatsTap: _handleStatsTap, // ✅ 關鍵
       onCardTap: _handleCardTap,
     );
   }

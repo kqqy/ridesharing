@@ -1,15 +1,23 @@
 import 'package:flutter/material.dart';
-import 'rating_widgets.dart'; // [修正] 引入更名後的 UI
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'rating_widgets.dart';
 
-class RatingPage extends StatefulWidget { // [修改] 更名為 RatingPage
-  const RatingPage({super.key});
+final supabase = Supabase.instance.client;
+
+class RatingPage extends StatefulWidget {
+  final String tripId; // ⭐ 關鍵：一定要有
+
+  const RatingPage({
+    super.key,
+    required this.tripId,
+  });
 
   @override
   State<RatingPage> createState() => _RatingPageState();
 }
 
 class _RatingPageState extends State<RatingPage> {
-  // 模擬需要評價的對象資料
+  // 模擬需要評價的對象資料（UI 不動）
   final List<Map<String, dynamic>> _targets = [
     {
       'name': '王大明',
@@ -39,15 +47,37 @@ class _RatingPageState extends State<RatingPage> {
     });
   }
 
-  void _handleSubmit() {
-    // 這裡通常會呼叫 API 送出資料
-    print('評價完成！詳細資料如下：');
-    for (var target in _targets) {
-      print('${target['name']} (${target['role']}): ${target['rating']} 星, 評語: ${target['controller'].text}');
-    }
+  // ===============================
+  // ⭐ 完成評價（重點）
+  // ===============================
+  Future<void> _handleSubmit() async {
+    try {
+      // 1️⃣ 這裡未來可以存評價（現在先不動）
+      for (var target in _targets) {
+        debugPrint(
+          '${target['name']} (${target['role']}): '
+              '${target['rating']} 星, 評語: ${target['controller'].text}',
+        );
+      }
 
-    // 完成後回到首頁 (清除所有堆疊回到最底層)
-    Navigator.of(context).popUntil((route) => route.isFirst);
+      // 2️⃣ ⭐ 核心：把行程改成 completed
+      await supabase
+          .from('trips')
+          .update({
+        'status': 'completed',
+      })
+          .eq('id', widget.tripId);
+
+      // 3️⃣ 回到首頁（觸發首頁重新 initState 撈資料）
+      if (!mounted) return;
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } catch (e) {
+      debugPrint('rating submit error: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('評價送出失敗，請稍後再試')),
+      );
+    }
   }
 
   @override
@@ -63,9 +93,9 @@ class _RatingPageState extends State<RatingPage> {
       );
     });
 
-    return RatingBody( // [修正] 使用 RatingBody
+    return RatingBody(
       ratingCards: cards,
-      onSubmit: _handleSubmit,
+      onSubmit: _handleSubmit, // ⭐ 接上
     );
   }
 }
