@@ -17,7 +17,6 @@ class ActiveTripPage extends StatefulWidget {
 }
 
 class _ActiveTripPageState extends State<ActiveTripPage> {
-
   // ===============================
   // SOS（原樣）
   // ===============================
@@ -30,6 +29,12 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
       final uri = Uri.parse('tel:$sosNumber');
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // ✅ 模擬器常沒有撥號器
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('此裝置無法開啟撥號功能（建議用實機測試）')),
+        );
       }
     }
 
@@ -78,7 +83,7 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
   }
 
   // ===============================
-  // ⭐ 結束行程 → 只跳評價頁
+  // 結束行程 → 評價頁
   // ===============================
   void _handleArrived() {
     showDialog(
@@ -95,7 +100,6 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
             onPressed: () {
               Navigator.pop(context);
 
-              // ✅ 正確：只把 tripId 傳給 RatingPage
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
@@ -114,13 +118,14 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
 
   @override
   Widget build(BuildContext context) {
+    // ✅ 不再傳固定 origin/destination
+    // ✅ ActiveTripBody 會用 tripId 自己去 Supabase trips 表抓 origin/destination
     return ActiveTripBody(
-      origin: '逢甲夜市',        // UI 不動
-      destination: '台中車站',  // UI 不動
+      tripId: widget.tripId,
       onSOS: _handleSOS,
       onArrived: _handleArrived,
       onShare: _handleShare,
-      onChat: () {}, // 不動聊天室
+      onChat: () {},
     );
   }
 }

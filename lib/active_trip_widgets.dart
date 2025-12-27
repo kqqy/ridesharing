@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
@@ -9,8 +10,8 @@ class ActiveTripBody extends StatefulWidget {
   final VoidCallback onShare;
   final VoidCallback onChat;
 
-  final String origin;
-  final String destination;
+  // ✅ 改成只傳 tripId，自己查 trips 表拿 origin/destination
+  final String tripId;
 
   const ActiveTripBody({
     super.key,
@@ -18,8 +19,7 @@ class ActiveTripBody extends StatefulWidget {
     required this.onArrived,
     required this.onShare,
     required this.onChat,
-    required this.origin,
-    required this.destination,
+    required this.tripId,
   });
 
   @override
@@ -27,8 +27,15 @@ class ActiveTripBody extends StatefulWidget {
 }
 
 class _ActiveTripBodyState extends State<ActiveTripBody> {
+  final supabase = Supabase.instance.client;
+
   GoogleMapController? _mapController;
 
+  // ✅ 從 DB 讀到的文字地址
+  String? _originText;
+  String? _destText;
+
+  // ✅ 轉成座標後
   LatLng? _originLatLng;
   LatLng? _destLatLng;
 
@@ -38,51 +45,91 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
   bool _loading = true;
   bool _routeBuilt = false;
 
-  // ⚠️ 換成你的 API Key（要啟用 Directions API + Billing）
+  // ⚠️ Directions 仍可能 REQUEST_DENIED（API/限制/Billing 問題），拿不到就畫直線 fallback
   static const String _googleApiKey = 'AIzaSyCQjEBcgsPbLD14kXGPcG7UUvDyd4PlPH0';
 
   @override
   void initState() {
     super.initState();
-    _geocodeEndpoints(); // 先把起終點轉成座標
+    _loadTripAndBuild(); // ✅ 一進來就讀 DB
   }
 
-  Future<void> _geocodeEndpoints() async {
+  Future<void> _loadTripAndBuild() async {
     setState(() => _loading = true);
 
     try {
-      // ✅ 建議補上城市，避免同名地點找錯
-      final originText = widget.origin.contains('台中') ? widget.origin : '${widget.origin}, 台中';
-      final destText = widget.destination.contains('台中') ? widget.destination : '${widget.destination}, 台中';
+      // 1) 讀 trips 表：origin/destination
+      final trip = await supabase
+          .from('trips')
+          .select('origin, destination')
+          .eq('id', widget.tripId)
+          .single();
 
-      final originLoc = await locationFromAddress(originText);
-      final destLoc = await locationFromAddress(destText);
+      final origin = (trip['origin'] as String?)?.trim();
+      final destination = (trip['destination'] as String?)?.trim();
 
-      _originLatLng = LatLng(originLoc.first.latitude, originLoc.first.longitude);
-      _destLatLng = LatLng(destLoc.first.latitude, destLoc.first.longitude);
+      if (origin == null || origin.isEmpty || destination == null || destination.isEmpty) {
+        throw '此行程缺少出發地或目的地（trips.origin / trips.destination）';
+      }
 
-      _markers
-        ..clear()
-        ..add(Marker(
-          markerId: const MarkerId('origin'),
-          position: _originLatLng!,
-          infoWindow: InfoWindow(title: '出發地', snippet: widget.origin),
-        ))
-        ..add(Marker(
-          markerId: const MarkerId('dest'),
-          position: _destLatLng!,
-          infoWindow: InfoWindow(title: '目的地', snippet: widget.destination),
-        ));
-    } catch (e) {
-      debugPrint('geocode failed: $e');
+      _originText = origin;
+      _destText = destination;
+
+      // 2) 文字地址 -> 座標
+      await _geocodeEndpoints(origin, destination);
+
+      // 3) marker
+      _buildMarkers();
+
+      // 4) 嘗試畫路線（Directions）；失敗則 fallback 直線
+      await _buildRouteOnce();
+    } on PostgrestException catch (e) {
+      debugPrint('load trip failed: ${e.message}');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('地址定位失敗：$e')),
+          SnackBar(content: Text('讀取行程失敗（DB）：${e.message}')),
+        );
+      }
+    } catch (e) {
+      debugPrint('load trip failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('讀取行程失敗：$e')),
         );
       }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _geocodeEndpoints(String originText, String destText) async {
+    // 這裡不要再用 widget.origin / widget.destination
+    // 直接用傳進來的 originText / destText（就是 DB 讀到的）
+    final originLoc = await locationFromAddress(originText);
+    final destLoc = await locationFromAddress(destText);
+
+    _originLatLng = LatLng(originLoc.first.latitude, originLoc.first.longitude);
+    _destLatLng = LatLng(destLoc.first.latitude, destLoc.first.longitude);
+  }
+
+
+  void _buildMarkers() {
+    if (_originLatLng == null || _destLatLng == null) return;
+
+    setState(() {
+      _markers
+        ..clear()
+        ..add(Marker(
+          markerId: const MarkerId('origin'),
+          position: _originLatLng!,
+          infoWindow: InfoWindow(title: '出發地', snippet: _originText ?? ''),
+        ))
+        ..add(Marker(
+          markerId: const MarkerId('dest'),
+          position: _destLatLng!,
+          infoWindow: InfoWindow(title: '目的地', snippet: _destText ?? ''),
+        ));
+    });
   }
 
   Future<void> _buildRouteOnce() async {
@@ -91,13 +138,11 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
 
     if (_originLatLng == null || _destLatLng == null) return;
 
-    // ✅ 先把鏡頭對準出發點（解決你說的「一開始跑到台北」）
-    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(_originLatLng!, 14));
+    // ✅ 一進來就對準出發地
+    await _mapController?.animateCamera(
+      CameraUpdate.newLatLngZoom(_originLatLng!, 15),
+    );
 
-    // ✅ 再 fitBounds（讓兩點都在畫面裡）
-    _fitBounds(_originLatLng!, _destLatLng!);
-
-    // 嘗試用 Directions 畫路線
     try {
       final polylinePoints = PolylinePoints();
       final result = await polylinePoints.getRouteBetweenCoordinates(
@@ -114,6 +159,7 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
 
       if (result.points.isNotEmpty) {
         final routeLatLng = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        if (!mounted) return;
         setState(() {
           _polylines
             ..clear()
@@ -126,7 +172,8 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
         return;
       }
 
-      // ❗如果 Directions 拿不到，就先畫直線（至少確認兩點正確）
+      // ❗Directions 拿不到（例如 REQUEST_DENIED）→ 用直線先頂著
+      if (!mounted) return;
       setState(() {
         _polylines
           ..clear()
@@ -136,12 +183,6 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
             width: 4,
           ));
       });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('拿不到路線（Directions 未回傳）。已先用直線連接起終點。')),
-        );
-      }
     } catch (e) {
       debugPrint('build route failed: $e');
     }
@@ -170,10 +211,9 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
       );
     }
 
-    // 如果 geocode 失敗
     if (_originLatLng == null || _destLatLng == null) {
       return const Scaffold(
-        body: Center(child: Text('無法定位出發/終點，請確認地址文字')),
+        body: Center(child: Text('無法定位出發/終點，請確認 trips 的 origin/destination')),
       );
     }
 
@@ -181,16 +221,20 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
       body: Stack(
         children: [
           GoogleMap(
-            // ✅ 初始就用出發點（不是台北）
             initialCameraPosition: CameraPosition(
               target: _originLatLng!,
-              zoom: 14,
+              zoom: 15,
             ),
-            onMapCreated: (controller) {
+            onMapCreated: (controller) async {
               _mapController = controller;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _buildRouteOnce();
-              });
+
+              // ✅ 保險：地圖 ready 後再對準一次出發地
+              await _mapController?.moveCamera(
+                CameraUpdate.newLatLngZoom(_originLatLng!, 15),
+              );
+
+              // ✅ 讓兩點都看得到（你想要就留，不想要就刪掉這行）
+              // _fitBounds(_originLatLng!, _destLatLng!);
             },
             myLocationEnabled: false,
             myLocationButtonEnabled: false,
@@ -199,7 +243,20 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
             polylines: _polylines,
           ),
 
-          // 你原本疊上去的 UI (SOS/分享/到達/聊天) 照放
+          // （可選）顯示全路線按鈕
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 70,
+            right: 20,
+            child: FloatingActionButton(
+              heroTag: 'btn_fit',
+              onPressed: () => _fitBounds(_originLatLng!, _destLatLng!),
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              child: const Icon(Icons.route),
+            ),
+          ),
+
+          // 你原本疊上去的 UI
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             left: 0,
@@ -218,7 +275,6 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
               ),
             ),
           ),
-
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             right: 20,
@@ -229,7 +285,6 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
               child: const Icon(Icons.sos, color: Colors.white),
             ),
           ),
-
           Positioned(
             bottom: 40,
             left: 20,

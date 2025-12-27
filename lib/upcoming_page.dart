@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'trip_model.dart';
-import 'upcoming_widgets.dart'; // 引入 UI 元件
-import 'chat_page.dart';        
+import 'upcoming_widgets.dart';
+import 'chat_page.dart';
 import 'active_trip_page.dart';
 import 'violation_service.dart';
+import 'passenger_create_trip_page.dart'; // ✅ 你建立行程那頁（檔名請換成你的實際檔名）
 
 final supabase = Supabase.instance.client;
 
 class UpcomingPage extends StatefulWidget {
-  final bool isDriver; 
+  final bool isDriver;
 
   const UpcomingPage({super.key, required this.isDriver});
 
@@ -20,15 +21,86 @@ class UpcomingPage extends StatefulWidget {
 class _UpcomingPageState extends State<UpcomingPage> {
   final ViolationService _violationService = ViolationService();
 
-  // 假資料
-  final List<Trip> _upcomingTrips = [
-    Trip(id: 'upcoming_fake_1', origin: '台北車站', destination: '市政府', departTime: DateTime.parse('2025-12-06 14:30'), seatsTotal: 3, seatsLeft: 1, status: 'open', note: '無'),
-    Trip(id: 'upcoming_fake_2', origin: '新竹科學園區', destination: '桃園高鐵站', departTime: DateTime.parse('2025-12-07 08:00'), seatsTotal: 4, seatsLeft: 2, status: 'open', note: '希望乘客不要吃東西'),
-  ];
+  List<Trip> _upcomingTrips = [];
+  bool _loading = true;
 
-  // 處理取消/離開
+  @override
+  void initState() {
+    super.initState();
+    _fetchUpcomingTrips();
+  }
+
+  Future<void> _fetchUpcomingTrips() async {
+    setState(() => _loading = true);
+
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          _upcomingTrips = [];
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    try {
+      // ✅ 先抓「自己創建」的行程（creator_id = 自己）
+      final rows = await supabase
+          .from('trips')
+          .select('id, origin, destination, depart_time, seats_total, seats_left, status, note')
+          .eq('creator_id', user.id)
+          .inFilter('status', ['open', 'started'])
+          .order('depart_time', ascending: true);
+
+      final trips = rows.map<Trip>((r) => Trip(
+        id: r['id'] as String,
+        origin: (r['origin'] ?? '') as String,
+        destination: (r['destination'] ?? '') as String,
+        departTime: DateTime.parse(r['depart_time'] as String),
+        seatsTotal: (r['seats_total'] ?? 0) as int,
+        seatsLeft: (r['seats_left'] ?? 0) as int,
+        status: (r['status'] ?? 'open') as String,
+        note: (r['note'] ?? '') as String,
+      )).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _upcomingTrips = trips;
+        _loading = false;
+      });
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('讀取行程失敗（DB）：${e.message}')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('讀取行程失敗：$e')),
+      );
+    }
+  }
+
+  // ✅ 建立行程（按鈕）→ 建立成功回來後刷新
+  Future<void> _goCreateTrip() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PassengerCreateTripPage()),
+    );
+
+    // 你如果已把 PassengerCreateTripPage 改成 pop(tripId)，這裡 result 就是 tripId
+    if (result != null) {
+      await _fetchUpcomingTrips(); // ✅ 回來就刷新
+    }
+  }
+
+  // ===============================
+  // 取消/離開（你原本邏輯保留）
+  // ===============================
   void _handleCancelTrip(Trip trip) {
-    // 預先檢查違規 (僅顯示警告文字用，實際寫入在確認後)
     bool willBeViolation = false;
     if (widget.isDriver) {
       willBeViolation = _violationService.isDriverCancelViolation(trip.departTime);
@@ -37,8 +109,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     }
 
     Widget title = widget.isDriver ? const Text('確定取消行程？') : const Text('⚠️ 退出警告');
-    
-    // 根據是否違規動態調整警告內容
+
     Widget content;
     if (widget.isDriver) {
       content = Column(
@@ -59,11 +130,11 @@ class _UpcomingPageState extends State<UpcomingPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (willBeViolation) ...[
-             const Text('若在出發前 1 小時內退出，', style: TextStyle(fontSize: 16)),
-             const SizedBox(height: 5),
-             const Text('將會有放鳥紀錄！', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+            const Text('若在出發前 1 小時內退出，', style: TextStyle(fontSize: 16)),
+            const SizedBox(height: 5),
+            const Text('將會有放鳥紀錄！', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
           ] else ...[
-             const Text('確定要退出此行程嗎？'),
+            const Text('確定要退出此行程嗎？'),
           ]
         ],
       );
@@ -81,18 +152,21 @@ class _UpcomingPageState extends State<UpcomingPage> {
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(dialogContext); // 先關閉對話框
-              
+              Navigator.pop(dialogContext);
+
               final userId = supabase.auth.currentUser?.id;
               if (userId == null) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未登入，無法執行操作')));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('未登入，無法執行操作')),
+                  );
+                }
                 return;
               }
 
               try {
-                // 如果構成違規，寫入紀錄
                 if (willBeViolation) {
-                  final violationType = widget.isDriver ? 'driver_cancel' : 'passenger_no_show'; // 或 passenger_cancel，視需求定義
+                  final violationType = widget.isDriver ? 'driver_cancel' : 'passenger_no_show';
                   await _violationService.recordViolation(
                     userId: userId,
                     tripId: trip.id,
@@ -101,8 +175,11 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   );
                 }
 
-                // TODO: 這裡呼叫後端 API 執行實際的「取消行程」或「退出行程」邏輯
-                // await supabase.rpc('cancel_trip', ...); 
+                // TODO: 真正取消/退出要更新 DB status 或刪 join
+                // await supabase.from('trips').update({'status':'canceled'}).eq('id', trip.id);
+
+                // ✅ 操作完刷新
+                await _fetchUpcomingTrips();
 
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -122,20 +199,14 @@ class _UpcomingPageState extends State<UpcomingPage> {
             child: const Text('確定'),
           ),
         ],
-        actionsAlignment: MainAxisAlignment.end,
       ),
     );
   }
 
-  // 處理聊天室
   void _handleChatTrip(Trip trip) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) =>ChatPage(tripId: trip.id)),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(tripId: trip.id)));
   }
 
-  // 處理出發 (乘客端)
   void _handleDepartTrip(Trip trip) {
     final List<String> tripMembers = ['司機', '我 (乘客)', '乘客 B'];
 
@@ -145,7 +216,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
       builder: (context) => PassengerManifestDialog(
         members: tripMembers,
         onConfirm: () {
-          Navigator.pop(context); 
+          Navigator.pop(context);
           Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => ActiveTripPage(tripId: trip.id)),
@@ -155,7 +226,6 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  // 顯示行程詳細資訊 Dialog (內部函式)
   void _showTripDetails(Trip trip) {
     final List<Map<String, dynamic>> fakeMembers = [
       {'name': '王小明', 'role': '司機', 'rating': 4.8},
@@ -163,21 +233,16 @@ class _UpcomingPageState extends State<UpcomingPage> {
 
     showDialog(
       context: context,
-      builder: (context) => PassengerTripDetailsDialog(
-        trip: trip,
-        members: fakeMembers,
-      ),
+      builder: (context) => PassengerTripDetailsDialog(trip: trip, members: fakeMembers),
     );
   }
 
-  // 處理詳細資訊點擊 (判斷是否顯示選單)
   void _handleTripDetail(Trip trip) {
-    // 假設 List 中的第二筆行程 (_upcomingTrips[1]) 是使用者自己創建的
-    // 這與 UpcomingBody 中的 isCreatedByMe 邏輯對應 (index > 0)
-    bool isCreatedByMe = !widget.isDriver && _upcomingTrips.indexOf(trip) > 0;
+    // ✅ 你原本用 index 判斷是不是自己創建，現在可以更準：creator_id == 自己
+    // 但 Trip model 目前沒 creatorId 欄位，所以先用「全部都是自己創建」的情境：
+    final bool isCreatedByMe = !widget.isDriver;
 
     if (isCreatedByMe) {
-      // 顯示 Popover 選單
       showDialog(
         context: context,
         builder: (context) => SimpleDialog(
@@ -188,7 +253,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               onPressed: () {
                 Navigator.pop(context);
-                _showTripDetails(trip); 
+                _showTripDetails(trip);
               },
               child: const Row(
                 children: [
@@ -202,11 +267,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               onPressed: () {
                 Navigator.pop(context);
-                // 顯示加入要求視窗
-                showDialog(
-                  context: context,
-                  builder: (context) => const JoinRequestsDialog(),
-                );
+                showDialog(context: context, builder: (context) => const JoinRequestsDialog());
               },
               child: const Row(
                 children: [
@@ -220,21 +281,37 @@ class _UpcomingPageState extends State<UpcomingPage> {
         ),
       );
     } else {
-      // 不是自己創建的，直接顯示詳細資訊
       _showTripDetails(trip);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return UpcomingBody(
-      isDriver: widget.isDriver, 
-      upcomingTrips: _upcomingTrips,
-      onCancelTrip: _handleCancelTrip,
-      onChatTrip: _handleChatTrip,
-      onDetailTap: _handleTripDetail,
-      // 乘客端：傳入出發函式；司機端：null
-      onDepartTrip: widget.isDriver ? null : _handleDepartTrip,
+    // ✅ 加一個右上角「新增行程」按鈕 + 下拉刷新
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('即將出發行程'),
+        actions: [
+          if (!widget.isDriver)
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: _goCreateTrip,
+            ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _fetchUpcomingTrips,
+              child: UpcomingBody(
+                isDriver: widget.isDriver,
+                upcomingTrips: _upcomingTrips,
+                onCancelTrip: _handleCancelTrip,
+                onChatTrip: _handleChatTrip,
+                onDetailTap: _handleTripDetail,
+                onDepartTrip: widget.isDriver ? null : _handleDepartTrip,
+              ),
+            ),
     );
   }
 }

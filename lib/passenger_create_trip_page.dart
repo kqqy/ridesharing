@@ -111,19 +111,25 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
       });
 
       // ✅ 3) 寫入 trips
-      await supabase.from('trips').insert({
-        'creator_id': creatorId,
-        'origin': origin,
-        'destination': destination,
-        'depart_time': departTime.toIso8601String(),
-        'seats_total': seatsTotal,
-        'seats_left': seatsTotal,
-        'status': 'open',
-        'note': note,
-      });
+      final inserted = await supabase
+          .from('trips')
+          .insert({
+            'creator_id': creatorId,
+            'origin': origin,
+            'destination': destination,
+            'depart_time': departTime.toIso8601String(),
+            'seats_total': seatsTotal,
+            'seats_left': seatsTotal,
+            'status': 'open',
+            'note': note,
+          })
+          .select('id')
+          .single();
+
+      final String tripId = inserted['id'] as String;
 
       if (!mounted) return;
-      Navigator.pop(context, true);
+      Navigator.pop(context, tripId); // ✅ 回傳 tripId 給上一頁
     } on PostgrestException catch (e) {
       // PostgREST 更容易看懂
       ScaffoldMessenger.of(context).showSnackBar(
