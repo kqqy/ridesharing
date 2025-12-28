@@ -18,6 +18,23 @@ class ViolationService {
     return difference < 1;
   }
 
+  /// 預測下一次違規的後果
+  Future<String> predictConsequence(String userId) async {
+    final data = await supabase
+        .from('suspensions')
+        .select('violation_count')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    final currentCount = (data?['violation_count'] as int?) ?? 0;
+    final nextCount = currentCount + 1;
+
+    if (nextCount == 1) return '警告信一支';
+    if (nextCount == 2) return '停權 2 週';
+    if (nextCount == 3) return '停權 3 週';
+    return '永久停權'; // >= 4
+  }
+
   /// 記錄違規並更新停權狀態
   Future<void> recordViolation({
     required String userId,
@@ -48,15 +65,42 @@ class ViolationService {
 
       if (data != null) {
         final currentCount = (data['violation_count'] as int?) ?? 0;
+        final newCount = currentCount + 1;
+        
+        DateTime? suspendedUntil;
+        bool isPermanent = false;
+
+        // 實作停權規則
+        if (newCount == 1) {
+          // 第 1 次：警告 (不設定 suspended_until)
+        } else if (newCount == 2) {
+          // 第 2 次：停權 2 週
+          suspendedUntil = DateTime.now().add(const Duration(days: 14));
+        } else if (newCount == 3) {
+          // 第 3 次：停權 3 週
+          suspendedUntil = DateTime.now().add(const Duration(days: 21));
+        } else if (newCount >= 4) {
+          // 第 4 次：永久停權
+          isPermanent = true;
+          // 設定一個極遠的日期作為備用
+          suspendedUntil = DateTime(9999, 12, 31);
+        }
+
         await supabase
             .from('suspensions')
-            .update({'violation_count': currentCount + 1})
+            .update({
+              'violation_count': newCount,
+              'suspended_until': suspendedUntil?.toIso8601String(),
+              'is_permanent': isPermanent,
+            })
             .eq('user_id', userId);
       } else {
+        // 第一次違規建立記錄 (第 1 次：警告)
         await supabase.from('suspensions').insert({
           'user_id': userId,
           'violation_count': 1,
           'is_permanent': false,
+          'suspended_until': null,
         });
       }
     } catch (e) {

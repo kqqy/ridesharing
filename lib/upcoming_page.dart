@@ -167,16 +167,17 @@ class _UpcomingPageState extends State<UpcomingPage> {
         ''')
           .eq('trip_id', trip.id);
 
-      final List<String> members = [];
+      final List<Map<String, String>> memberList = [];
 
       for (final row in data) {
         final userId = row['user_id'] as String;
         final role = (row['role'] ?? '') as String;
         final nickname = (row['users']?['nickname'] ?? '未知') as String;
 
-        final isMe = userId == me.id;
+        // 不顯示自己（創建者/司機）在清單中讓自己點名
+        if (userId == me.id) continue;
 
-        String nameText = isMe ? '我' : nickname;
+        String nameText = nickname;
 
         if (role == 'creator') {
           nameText += ' (創建者)';
@@ -184,7 +185,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
           nameText += ' (司機)';
         }
 
-        members.add(nameText);
+        memberList.add({'id': userId, 'name': nameText});
       }
 
       if (!mounted) return;
@@ -193,15 +194,32 @@ class _UpcomingPageState extends State<UpcomingPage> {
         context: context,
         barrierDismissible: false,
         builder: (_) => PassengerManifestDialog(
-          members: members,
-          onConfirm: () {
-            Navigator.pop(context);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ActiveTripPage(tripId: trip.id),
-              ),
-            );
+          members: memberList,
+          onConfirm: (statusMap) async {
+            Navigator.pop(context); // 關閉對話框
+
+            // 處理未到達的違規
+            for (var entry in statusMap.entries) {
+              if (entry.value == 2) { // 2 = 未到達
+                 await _violationService.recordViolation(
+                   userId: entry.key, 
+                   tripId: trip.id, 
+                   violationType: 'no_show',
+                   reason: '行程出發時被標記為未到達',
+                 );
+                 debugPrint('已記錄使用者 ${entry.key} 未到達違規');
+              }
+            }
+
+            // 進入進行中頁面
+            if (mounted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ActiveTripPage(tripId: trip.id),
+                ),
+              );
+            }
           },
         ),
       );
@@ -230,34 +248,86 @@ class _UpcomingPageState extends State<UpcomingPage> {
     final violationThreshold = isCreator ? 6 : 1;
     final willViolate = hoursUntilDepart < violationThreshold;
 
-    // 確認對話框
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isCreator ? '確定要取消行程？' : '確定要離開行程？'),
-        content: Text(willViolate
-            ? (isCreator
-            ? '警告：距離出發時間不足 6 小時，取消將記錄違規！'
-            : '警告：距離出發時間不足 1 小時，離開將記錄違規！')
-            : (isCreator
-            ? '取消後，所有成員將被移除。'
-            : '離開後，您將不再是此行程的成員。')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+    bool? confirmed;
+
+    if (willViolate) {
+      // ⚠️ 顯示違規警告視窗
+      final consequence = await _violationService.predictConsequence(user.id);
+      
+      if (!mounted) return;
+
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Row(
+            children: const [
+              Icon(Icons.warning_amber_rounded, color: Colors.red),
+              SizedBox(width: 10),
+              Text('違規警告', style: TextStyle(color: Colors.red)),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: willViolate ? Colors.red : Colors.orange,
-              foregroundColor: Colors.white,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isCreator
+                    ? '距離出發時間不足 6 小時，取消將被視為違規！'
+                    : '距離出發時間不足 1 小時，離開將被視為違規！',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 10),
+              const Text('本次違規處罰：'),
+              Text(
+                consequence,
+                style: const TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text('您確定要繼續嗎？'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('我再想想'),
             ),
-            child: Text(isCreator ? '確定取消' : '確定離開'),
-          ),
-        ],
-      ),
-    );
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('確定違規退出'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // ✅ 一般確認視窗 (無違規)
+      confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(isCreator ? '取消行程確認' : '離開行程確認'),
+          content: Text(isCreator
+              ? '取消後，所有成員將被移除行程。'
+              : '離開後，您將不再是此行程的成員。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('確定'),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (confirmed != true) return;
 

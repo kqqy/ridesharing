@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'passenger_create_trip_widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'violation_service.dart'; // Import ViolationService
 
 final supabase = Supabase.instance.client;
 
@@ -66,6 +67,22 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
   }
 
   Future<void> _handleSubmit() async {
+    // ✅ 0) 檢查停權狀態
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser != null) {
+      final isSuspended = await ViolationService().isUserSuspended(currentUser.id);
+      if (isSuspended) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('您的帳號目前已被停權，無法建立行程。'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
     final String origin = _originController.text.trim();
     final String destination = _destinationController.text.trim();
     final String note = _noteController.text.trim();

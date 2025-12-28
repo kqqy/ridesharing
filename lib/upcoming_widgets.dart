@@ -717,8 +717,8 @@ class MemberProfileDialog extends StatelessWidget {
 // 5️⃣ PassengerManifestDialog
 // ==========================================
 class PassengerManifestDialog extends StatefulWidget {
-  final List<String> members;
-  final VoidCallback onConfirm;
+  final List<Map<String, String>> members; // [{'id': '...', 'name': '...'}]
+  final Function(Map<String, int>) onConfirm;
 
   const PassengerManifestDialog({
     super.key,
@@ -732,12 +732,12 @@ class PassengerManifestDialog extends StatefulWidget {
 }
 
 class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
-  late Map<String, int> _status;
+  late Map<String, int> _status; // userId -> status (0:none, 1:arrived, 2:missing)
 
   @override
   void initState() {
     super.initState();
-    _status = {for (var m in widget.members) m: 0};
+    _status = {for (var m in widget.members) m['id']!: 0};
   }
 
   @override
@@ -749,9 +749,11 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('目前成員',
+            const Text('確認成員是否到達',
                 style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
+            const Text('被標記為未到達的成員將會被記錄違規',
+                style: TextStyle(fontSize: 14, color: Colors.red)),
             const Divider(),
             const SizedBox(height: 10),
             Container(
@@ -759,27 +761,34 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
               child: ListView(
                 shrinkWrap: true,
                 children: widget.members
-                    .map((name) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(name,
-                          style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold)),
-                      Row(
-                        children: [
-                          _buildStatusBtn(
-                              '已到達', name, 1, Colors.green),
-                          const SizedBox(width: 10),
-                          _buildStatusBtn(
-                              '未到達', name, 2, Colors.red),
-                        ],
-                      )
-                    ],
-                  ),
-                ))
+                    .map((m) {
+                      final id = m['id']!;
+                      final name = m['name']!;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(name,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold)),
+                            ),
+                            Row(
+                              children: [
+                                _buildStatusBtn(
+                                    '已到達', id, 1, Colors.green),
+                                const SizedBox(width: 10),
+                                _buildStatusBtn(
+                                    '未到達', id, 2, Colors.red),
+                              ],
+                            )
+                          ],
+                        ),
+                      );
+                    })
                     .toList(),
               ),
             ),
@@ -792,11 +801,11 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
                     child: const Text('取消',
                         style: TextStyle(color: Colors.grey, fontSize: 16))),
                 ElevatedButton(
-                  onPressed: widget.onConfirm,
+                  onPressed: () => widget.onConfirm(_status),
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue,
                       foregroundColor: Colors.white),
-                  child: const Text('確定', style: TextStyle(fontSize: 16)),
+                  child: const Text('確定出發', style: TextStyle(fontSize: 16)),
                 ),
               ],
             ),
@@ -806,10 +815,10 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
     );
   }
 
-  Widget _buildStatusBtn(String label, String name, int val, Color color) {
-    final isSelected = _status[name] == val;
+  Widget _buildStatusBtn(String label, String id, int val, Color color) {
+    final isSelected = _status[id] == val;
     return InkWell(
-      onTap: () => setState(() => _status[name] = val),
+      onTap: () => setState(() => _status[id] = val),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(

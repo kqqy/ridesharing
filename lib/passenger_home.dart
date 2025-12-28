@@ -8,6 +8,7 @@ import 'passenger_create_trip_page.dart';
 import 'upcoming_page.dart';
 import 'upcoming_widgets.dart';
 import 'history_page.dart';
+import 'violation_service.dart';
 
 class PassengerHome extends StatefulWidget {
   final Color themeColor;
@@ -95,6 +96,20 @@ class _PassengerHomeState extends State<PassengerHome> {
       return;
     }
 
+    // ✅ 檢查停權狀態
+    final isSuspended = await ViolationService().isUserSuspended(user.id);
+    if (isSuspended) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('您的帳號目前已被停權，無法加入行程。'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       debugPrint('✅ 開始申請加入行程，trip_id: ${trip.id}, user_id: ${user.id}');
 
@@ -164,6 +179,22 @@ class _PassengerHomeState extends State<PassengerHome> {
   }
 
   void _handleCreateTrip() async {
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      final isSuspended = await ViolationService().isUserSuspended(user.id);
+      if (isSuspended) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('您的帳號目前已被停權，無法建立行程。'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(

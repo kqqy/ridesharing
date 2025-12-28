@@ -7,6 +7,7 @@ import 'chat_page.dart';
 import 'upcoming_page.dart';
 import 'history_page.dart';
 import 'upcoming_widgets.dart';
+import 'violation_service.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -82,6 +83,20 @@ class _DriverHomeState extends State<DriverHome> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請先登入')),
       );
+      return;
+    }
+
+    // ✅ 檢查停權狀態
+    final isSuspended = await ViolationService().isUserSuspended(user.id);
+    if (isSuspended) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('您的帳號目前已被停權，無法加入行程。'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       return;
     }
 
