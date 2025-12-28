@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'active_trip_widgets.dart';
 import 'chat_page.dart';
 import 'rating_page.dart';
