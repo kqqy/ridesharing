@@ -24,7 +24,6 @@ class _DriverHomeState extends State<DriverHome> {
 
   Trip? _currentActiveTrip;
 
-  // ✅ 改成「真資料」
   List<Trip> _exploreTrips = [];
   bool _loadingExplore = true;
 
@@ -47,7 +46,7 @@ class _DriverHomeState extends State<DriverHome> {
 
       final trips = (data as List).map<Trip>((e) {
         return Trip(
-          id: e['id'].toString(), // ✅ DB uuid
+          id: e['id'].toString(),
           origin: e['origin'] ?? '',
           destination: e['destination'] ?? '',
           departTime: DateTime.parse(e['depart_time']),
@@ -76,21 +75,81 @@ class _DriverHomeState extends State<DriverHome> {
     }
   }
 
-  // Explore：先只做 UI，不動 DB
-  void _handleJoinTrip(Trip trip) {
-    debugPrint('加入行程（之後接 trip_members）: ${trip.id}');
+  void _handleJoinTrip(Trip trip) async {
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('請先登入')),
+      );
+      return;
+    }
+
+    try {
+      // 檢查是否已經是成員
+      final existMember = await supabase
+          .from('trip_members')
+          .select('id')
+          .eq('trip_id', trip.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existMember != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('你已經是此行程的成員')),
+          );
+        }
+        return;
+      }
+
+      // 檢查是否已經發送過申請
+      final existRequest = await supabase
+          .from('join_requests')
+          .select('trip_id')
+          .eq('trip_id', trip.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existRequest != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('申請已發送，請等待創建者審核')),
+          );
+        }
+        return;
+      }
+
+      // 發送加入申請
+      await supabase.from('join_requests').insert({
+        'trip_id': trip.id,
+        'user_id': user.id,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('已發送加入申請，請等待創建者審核'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('發送申請失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('發送申請失敗: $e')),
+        );
+      }
+    }
   }
 
+  // ✅ 簡化：直接使用會自動載入成員的 Dialog
   void _handleExploreDetail(Trip trip) {
-    final List<Map<String, dynamic>> fakeMembers = [
-      {'name': '發起人', 'role': '乘客', 'rating': 4.8},
-    ];
-
     showDialog(
       context: context,
       builder: (context) => PassengerTripDetailsDialog(
-        trip: trip,
-        members: fakeMembers,
+        trip: trip,  // ✅ 只傳 trip，Dialog 會自己載入成員
       ),
     );
   }
@@ -147,7 +206,6 @@ class _DriverHomeState extends State<DriverHome> {
     );
   }
 
-  // ✅ 聊天室：只允許「進行中的真行程」
   void _handleChat() {
     if (_currentActiveTrip == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -171,7 +229,6 @@ class _DriverHomeState extends State<DriverHome> {
       currentActiveTrip: _currentActiveTrip,
       isManageMenuVisible: _showManageMenu,
       exploreTrips: _exploreTrips,
-      //isExploreLoading: _loadingExplore,
       onJoinTrip: _handleJoinTrip,
       onExploreDetail: _handleExploreDetail,
       onManageTap: () =>

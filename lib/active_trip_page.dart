@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'active_trip_widgets.dart';
+import 'chat_page.dart';
 import 'rating_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
@@ -17,6 +18,7 @@ class ActiveTripPage extends StatefulWidget {
 }
 
 class _ActiveTripPageState extends State<ActiveTripPage> {
+
   // ===============================
   // SOS（原樣）
   // ===============================
@@ -98,15 +100,20 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(context);  // 關閉確認對話框
 
+              // ✅ 正確：只把 tripId 傳給 RatingPage
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => RatingPage(tripId: widget.tripId),
+                  builder: (_) => RatingPage(tripId: widget.tripId),  // ✅ 傳入 tripId
                 ),
               );
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('確認'),
           ),
         ],
@@ -114,7 +121,21 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
     );
   }
 
-  void _handleShare() {}
+  void _handleShare() {
+    debugPrint('分享行程連結');
+  }
+
+  // ===============================
+  // 聊天室（重點）
+  // ===============================
+  void _handleChat() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatPage(tripId: widget.tripId), // ✅ 正確
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

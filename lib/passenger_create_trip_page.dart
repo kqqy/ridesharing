@@ -101,7 +101,7 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
       // ✅ 2) 保險：先確保 public.users 有這個人（避免 trips 外鍵炸掉）
       // 依你的表結構：users 有 nickname / email / phone（phone 若沒有就不寫）
       final String fallbackNickname =
-          (user.email?.split('@').first ?? 'user').trim();
+      (user.email?.split('@').first ?? 'user').trim();
 
       await supabase.from('users').upsert({
         'id': creatorId,
@@ -127,18 +127,29 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
           .single();
 
       final String tripId = inserted['id'] as String;
+      // ✅ 4) 把創建者也加入 trip_members，role 設為 creator
+      await supabase.from('trip_members').insert({
+        'trip_id': tripId,
+        'user_id': creatorId,
+        'role': 'creator',  // ✅✅✅ 改成 creator
+        'join_time': DateTime.now().toIso8601String(),
+      });
+
 
       if (!mounted) return;
       Navigator.pop(context, tripId); // ✅ 回傳 tripId 給上一頁
     } on PostgrestException catch (e) {
-      // PostgREST 更容易看懂
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('建立行程失敗（DB）：${e.message}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('建立行程失敗（DB）：${e.message}')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('建立行程失敗：$e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('建立行程失敗：$e')),
+        );
+      }
     }
   }
 
