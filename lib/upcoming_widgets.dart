@@ -3,16 +3,21 @@ import 'trip_model.dart';
 import 'passenger_widgets.dart'; // 借用 PassengerTripCard
 import 'stats_page.dart'; // 引入統計頁面 (為了成員詳細資料跳轉)
 
+// ✅ 新增：Google Map 預覽需要的套件
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+
 // ==========================================
 //  1. UI 元件：即將出發行程的整頁介面 (UpcomingBody)
 // ==========================================
 class UpcomingBody extends StatelessWidget {
-  final bool isDriver; 
+  final bool isDriver;
   final List<Trip> upcomingTrips;
-  final Function(Trip) onCancelTrip; 
+  final Function(Trip) onCancelTrip;
   final Function(Trip) onChatTrip;
   final Function(Trip) onDetailTap;
-  final Function(Trip)? onDepartTrip; 
+  final Function(Trip)? onDepartTrip;
 
   const UpcomingBody({
     super.key,
@@ -44,7 +49,7 @@ class UpcomingBody extends StatelessWidget {
               itemCount: upcomingTrips.length,
               itemBuilder: (context, index) {
                 final trip = upcomingTrips[index];
-                
+
                 // 邏輯：第一張卡片是參加別人的(不能出發)，後面的是自己創的(可出發)
                 final bool isFirstCard = index == 0;
 
@@ -54,12 +59,12 @@ class UpcomingBody extends StatelessWidget {
                 if (isDriver) {
                   // --- 司機模式 ---
                   cancelBtnText = '取消行程';
-                  departAction = null; 
+                  departAction = null;
                 } else {
                   // --- 乘客模式 ---
                   if (isFirstCard) {
                     cancelBtnText = '離開';
-                    departAction = null; 
+                    departAction = null;
                   } else {
                     cancelBtnText = '取消行程';
                     departAction = () => onDepartTrip?.call(trip);
@@ -75,9 +80,9 @@ class UpcomingBody extends StatelessWidget {
                   onJoin: null,
                   onChat: () => onChatTrip(trip),
                   cancelText: cancelBtnText,
-                  onDepart: departAction, 
+                  onDepart: departAction,
                   onCancel: () => onCancelTrip(trip),
-                  
+
                   // 如果是自己創建的卡片，直接顯示紅點
                   hasNotification: isCreatedByMe,
                 );
@@ -92,9 +97,9 @@ class UpcomingBody extends StatelessWidget {
                         child: Text(
                           '此行程由您創建',
                           style: TextStyle(
-                            color: Colors.grey, 
+                            color: Colors.grey,
                             fontSize: 12,
-                            fontWeight: FontWeight.bold
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                       ),
@@ -126,17 +131,193 @@ class UpcomingBody extends StatelessWidget {
 }
 
 // ==========================================
+//  ✅ 新增：Dialog 裡的小地圖路線預覽（不可滑動）
+// ==========================================
+class TripRoutePreviewMap extends StatefulWidget {
+  final String originText;
+  final String destText;
+
+  /// Directions API Key（跟 ActiveTripBody 那邊用同一把即可）
+  final String googleApiKey;
+
+  /// 地圖高度
+  final double height;
+
+  const TripRoutePreviewMap({
+    super.key,
+    required this.originText,
+    required this.destText,
+    required this.googleApiKey,
+    this.height = 150,
+  });
+
+  @override
+  State<TripRoutePreviewMap> createState() => _TripRoutePreviewMapState();
+}
+
+class _TripRoutePreviewMapState extends State<TripRoutePreviewMap> {
+  GoogleMapController? _controller;
+
+  LatLng? _o;
+  LatLng? _d;
+
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    setState(() => _loading = true);
+
+    try {
+      // ✅ 如果你想降低「同名地點找錯」，可以自行加城市：
+      // final originQ = '${widget.originText}, 台中';
+      // final destQ = '${widget.destText}, 台中';
+      final originQ = widget.originText;
+      final destQ = widget.destText;
+
+      final oList = await locationFromAddress(originQ);
+      final dList = await locationFromAddress(destQ);
+
+      _o = LatLng(oList.first.latitude, oList.first.longitude);
+      _d = LatLng(dList.first.latitude, dList.first.longitude);
+
+      _markers
+        ..clear()
+        ..add(Marker(markerId: const MarkerId('o'), position: _o!))
+        ..add(Marker(markerId: const MarkerId('d'), position: _d!));
+
+      await _buildPolyline();
+    } catch (e) {
+      debugPrint('TripRoutePreviewMap init failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _buildPolyline() async {
+    if (_o == null || _d == null) return;
+
+    try {
+      final polylinePoints = PolylinePoints();
+      final result = await polylinePoints.getRouteBetweenCoordinates(
+        googleApiKey: widget.googleApiKey,
+        request: PolylineRequest(
+          origin: PointLatLng(_o!.latitude, _o!.longitude),
+          destination: PointLatLng(_d!.latitude, _d!.longitude),
+          mode: TravelMode.driving,
+        ),
+      );
+
+      if (result.points.isNotEmpty) {
+        final route = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        _polylines
+          ..clear()
+          ..add(Polyline(
+            polylineId: const PolylineId('route'),
+            points: route,
+            width: 5,
+          ));
+      } else {
+        // fallback：直線
+        _polylines
+          ..clear()
+          ..add(Polyline(
+            polylineId: const PolylineId('line'),
+            points: [_o!, _d!],
+            width: 4,
+          ));
+      }
+    } catch (e) {
+      // fallback：直線
+      _polylines
+        ..clear()
+        ..add(Polyline(
+          polylineId: const PolylineId('line'),
+          points: [_o!, _d!],
+          width: 4,
+        ));
+    }
+  }
+
+  void _fitBounds() {
+    if (_controller == null || _o == null || _d == null) return;
+
+    final sw = LatLng(
+      (_o!.latitude < _d!.latitude) ? _o!.latitude : _d!.latitude,
+      (_o!.longitude < _d!.longitude) ? _o!.longitude : _d!.longitude,
+    );
+    final ne = LatLng(
+      (_o!.latitude > _d!.latitude) ? _o!.latitude : _d!.latitude,
+      (_o!.longitude > _d!.longitude) ? _o!.longitude : _d!.longitude,
+    );
+
+    _controller!.animateCamera(
+      CameraUpdate.newLatLngBounds(LatLngBounds(southwest: sw, northeast: ne), 40),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: widget.height,
+      decoration: BoxDecoration(
+        color: Colors.grey[200],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade400),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : (_o == null || _d == null)
+              ? const Center(child: Text('無法載入地圖預覽'))
+              : GoogleMap(
+                  initialCameraPosition: CameraPosition(target: _o!, zoom: 14),
+                  onMapCreated: (c) {
+                    _controller = c;
+                    WidgetsBinding.instance.addPostFrameCallback((_) => _fitBounds());
+                  },
+                  markers: _markers,
+                  polylines: _polylines,
+
+                  // ✅ 不可操作（你要的）
+                  scrollGesturesEnabled: false,
+                  zoomGesturesEnabled: false,
+                  rotateGesturesEnabled: false,
+                  tiltGesturesEnabled: false,
+
+                  zoomControlsEnabled: false,
+                  myLocationEnabled: false,
+                  myLocationButtonEnabled: false,
+                  mapToolbarEnabled: false,
+                  compassEnabled: false,
+                ),
+    );
+  }
+}
+
+// ==========================================
 //  2. UI 元件：行程詳細資訊視窗
 // ==========================================
 class PassengerTripDetailsDialog extends StatelessWidget {
   final Trip trip;
-  final List<Map<String, dynamic>> members; 
+  final List<Map<String, dynamic>> members;
 
   const PassengerTripDetailsDialog({
     super.key,
     required this.trip,
     required this.members,
   });
+
+  // ✅ 這裡放你的 Google Directions API key
+  static const String _googleApiKey = 'AIzaSyCQjEBcgsPbLD14kXGPcG7UUvDyd4PlPH0';
 
   @override
   Widget build(BuildContext context) {
@@ -163,25 +344,14 @@ class PassengerTripDetailsDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: double.infinity,
+                    // ✅ 這裡改成真的 GoogleMap 預覽（不可滑動）
+                    TripRoutePreviewMap(
+                      originText: trip.origin,
+                      destText: trip.destination,
+                      googleApiKey: _googleApiKey,
                       height: 150,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade400),
-                      ),
-                      child: const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.map, size: 40, color: Colors.grey),
-                            SizedBox(height: 8),
-                            Text('Google Map 路線預覽', style: TextStyle(color: Colors.grey)),
-                          ],
-                        ),
-                      ),
                     ),
+
                     const SizedBox(height: 20),
                     _buildSectionTitle('行程資訊'),
                     const SizedBox(height: 8),
@@ -194,47 +364,47 @@ class PassengerTripDetailsDialog extends StatelessWidget {
                     _buildSectionTitle('成員列表'),
                     const SizedBox(height: 8),
                     ...members.map((member) => Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            backgroundColor: member['role'] == '司機' ? Colors.blue[100] : Colors.orange[100],
-                            radius: 18,
-                            child: Icon(
-                              member['role'] == '司機' ? Icons.drive_eta : Icons.person,
-                              size: 20,
-                              color: member['role'] == '司機' ? Colors.blue : Colors.orange,
-                            ),
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade200),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(member['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                Text(member['role'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                          Row(
+                          child: Row(
                             children: [
-                              const Icon(Icons.star, size: 16, color: Colors.amber),
-                              const SizedBox(width: 4),
-                              Text(
-                                member['rating'].toString(),
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              CircleAvatar(
+                                backgroundColor: member['role'] == '司機' ? Colors.blue[100] : Colors.orange[100],
+                                radius: 18,
+                                child: Icon(
+                                  member['role'] == '司機' ? Icons.drive_eta : Icons.person,
+                                  size: 20,
+                                  color: member['role'] == '司機' ? Colors.blue : Colors.orange,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(member['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                    Text(member['role'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(Icons.star, size: 16, color: Colors.amber),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    member['rating'].toString(),
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    )),
+                        )),
                   ],
                 ),
               ),
@@ -286,15 +456,15 @@ class JoinRequestsDialog extends StatefulWidget {
 class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
   final List<Map<String, dynamic>> _requests = [
     {
-      'id': 1, 
-      'name': '新成員 A', 
+      'id': 1,
+      'name': '新成員 A',
       'rating': 4.5,
-      'violation': 0, 
-      'noShow': 2,    
+      'violation': 0,
+      'noShow': 2,
     },
     {
-      'id': 2, 
-      'name': '新成員 B', 
+      'id': 2,
+      'name': '新成員 B',
       'rating': 3.8,
       'violation': 1,
       'noShow': 0,
@@ -340,61 +510,60 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
             ),
             const Divider(),
             Expanded(
-              child: _requests.isEmpty 
-              ? const Center(child: Text('目前沒有加入要求', style: TextStyle(color: Colors.grey)))
-              : ListView.builder(
-                  itemCount: _requests.length,
-                  itemBuilder: (context, index) {
-                    final req = _requests[index];
-                    return InkWell(
-                      onTap: () => _showMemberProfile(req),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
+              child: _requests.isEmpty
+                  ? const Center(child: Text('目前沒有加入要求', style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                      itemCount: _requests.length,
+                      itemBuilder: (context, index) {
+                        final req = _requests[index];
+                        return InkWell(
+                          onTap: () => _showMemberProfile(req),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: Colors.orange[100],
-                              child: const Icon(Icons.person, color: Colors.orange),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[50],
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey.shade200),
                             ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(req['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  Row(
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: Colors.orange[100],
+                                  child: const Icon(Icons.person, color: Colors.orange),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      const Icon(Icons.star, size: 14, color: Colors.amber),
-                                      const SizedBox(width: 2),
-                                      Text(req['rating'].toString(), style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                      Text(req['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.star, size: 14, color: Colors.amber),
+                                          const SizedBox(width: 2),
+                                          Text(req['rating'].toString(),
+                                              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                        ],
+                                      ),
                                     ],
                                   ),
-                                ],
-                              ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
+                                  onPressed: () {},
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
+                                  onPressed: () {},
+                                ),
+                              ],
                             ),
-                            // 打勾按鈕 (靜默)
-                            IconButton(
-                              icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
-                              onPressed: () {},
-                            ),
-                            // 打叉按鈕 (靜默)
-                            IconButton(
-                              icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
-                              onPressed: () {},
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
+                          ),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -424,7 +593,7 @@ class MemberProfileDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: const Color(0xFFEBEFF5), 
+      backgroundColor: const Color(0xFFEBEFF5),
       child: Stack(
         children: [
           Padding(
@@ -439,12 +608,10 @@ class MemberProfileDialog extends StatelessWidget {
                 const SizedBox(height: 15),
                 const Divider(color: Colors.black12, thickness: 1),
                 const SizedBox(height: 15),
-
                 _buildInfoRow('違規次數', '$violationCount 次'),
                 const SizedBox(height: 10),
                 const Divider(color: Colors.black12, thickness: 1),
                 const SizedBox(height: 15),
-
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
@@ -455,11 +622,8 @@ class MemberProfileDialog extends StatelessWidget {
                     const SizedBox(width: 15),
                     Row(
                       children: List.generate(5, (index) {
-                        if (index < rating.floor()) {
-                          return const Icon(Icons.star, color: Colors.amber, size: 24);
-                        } else if (index < rating) {
-                          return const Icon(Icons.star_half, color: Colors.amber, size: 24);
-                        }
+                        if (index < rating.floor()) return const Icon(Icons.star, color: Colors.amber, size: 24);
+                        if (index < rating) return const Icon(Icons.star_half, color: Colors.amber, size: 24);
                         return const Icon(Icons.star_border, color: Colors.amber, size: 24);
                       }),
                     ),
@@ -470,10 +634,8 @@ class MemberProfileDialog extends StatelessWidget {
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 30),
                 const Divider(color: Colors.black12, thickness: 1),
-                
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('關閉', style: TextStyle(color: Colors.blueGrey, fontSize: 16)),
@@ -481,25 +643,17 @@ class MemberProfileDialog extends StatelessWidget {
               ],
             ),
           ),
-
           Positioned(
             top: 10,
             right: 10,
             child: TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.push(
-                  context, 
-                  MaterialPageRoute(builder: (context) => const StatsPage())
-                );
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const StatsPage()));
               },
               child: const Text(
-                '詳細資料', 
-                style: TextStyle(
-                  color: Colors.blue, 
-                  fontSize: 14, 
-                  fontWeight: FontWeight.bold
-                )
+                '詳細資料',
+                style: TextStyle(color: Colors.blue, fontSize: 14, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -512,14 +666,8 @@ class MemberProfileDialog extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 16, color: Colors.black54),
-        ),
-        Text(
-          value,
-          style: const TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold),
-        ),
+        Text(label, style: const TextStyle(fontSize: 16, color: Colors.black54)),
+        Text(value, style: const TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -533,7 +681,7 @@ class PassengerManifestDialog extends StatefulWidget {
   final VoidCallback onConfirm;
 
   const PassengerManifestDialog({
-    super.key, 
+    super.key,
     required this.members,
     required this.onConfirm,
   });
@@ -568,32 +716,33 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
               constraints: const BoxConstraints(maxHeight: 250),
               child: ListView(
                 shrinkWrap: true,
-                children: widget.members.map((name) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      Row(
-                        children: [
-                          _buildStatusBtn('已到達', name, 1, Colors.green),
-                          const SizedBox(width: 10),
-                          _buildStatusBtn('未到達', name, 2, Colors.red),
-                        ],
-                      )
-                    ],
-                  ),
-                )).toList(),
+                children: widget.members
+                    .map((name) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Row(
+                                children: [
+                                  _buildStatusBtn('已到達', name, 1, Colors.green),
+                                  const SizedBox(width: 10),
+                                  _buildStatusBtn('未到達', name, 2, Colors.red),
+                                ],
+                              )
+                            ],
+                          ),
+                        ))
+                    .toList(),
               ),
             ),
             const SizedBox(height: 20),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context), 
-                  child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16))
-                ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16))),
                 ElevatedButton(
                   onPressed: widget.onConfirm,
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
@@ -669,11 +818,38 @@ class _DriverManifestDialogState extends State<DriverManifestDialog> {
               constraints: const BoxConstraints(maxHeight: 250),
               child: ListView(
                 shrinkWrap: true,
-                children: widget.passengers.map((p) => Padding(padding: const EdgeInsets.symmetric(vertical: 10.0), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(p, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), Row(children: [_buildStatusBtn('已上車', p, 1, Colors.green), const SizedBox(width: 10), _buildStatusBtn('未出現', p, 2, Colors.red)])]))).toList(),
+                children: widget.passengers
+                    .map((p) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(p, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Row(
+                                children: [
+                                  _buildStatusBtn('已上車', p, 1, Colors.green),
+                                  const SizedBox(width: 10),
+                                  _buildStatusBtn('未出現', p, 2, Colors.red),
+                                ],
+                              )
+                            ],
+                          ),
+                        ))
+                    .toList(),
               ),
             ),
             const SizedBox(height: 20),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), ElevatedButton(onPressed: widget.onConfirm, style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white), child: const Text('確認出發'))]),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+                ElevatedButton(
+                  onPressed: widget.onConfirm,
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                  child: const Text('確認出發'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -684,7 +860,11 @@ class _DriverManifestDialogState extends State<DriverManifestDialog> {
     final isSelected = _status[p] == val;
     return InkWell(
       onTap: () => setState(() => _status[p] = val),
-      child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), decoration: BoxDecoration(color: isSelected ? color : Colors.grey[200], borderRadius: BorderRadius.circular(8)), child: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black, fontWeight: FontWeight.bold))),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: isSelected ? color : Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+        child: Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
+      ),
     );
   }
 }
