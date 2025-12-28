@@ -104,16 +104,26 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
         title: const Text('確認到達？'),
         content: const Text('確認到達後將結束行程並進行評價。'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(context);  // 關閉確認對話框
+
+              // ✅ 導向評價頁面，並傳入 tripId
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (_) => const RatingPage()),
+                MaterialPageRoute(
+                  builder: (_) => RatingPage(tripId: widget.tripId),  // ✅ 傳入 tripId
+                ),
               );
             },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('確認'),
           ),
         ],

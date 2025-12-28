@@ -37,7 +37,7 @@ class _PassengerHomeState extends State<PassengerHome> {
     final data = await supabase
         .from('trips')
         .select()
-        .eq('status', 'open')
+        .eq('status', 'open')  // ✅ 只顯示招募中
         .order('depart_time');
 
     final trips = (data as List)
@@ -93,17 +93,63 @@ class _PassengerHomeState extends State<PassengerHome> {
     );
   }
 
-  void _handleJoinTrip(Trip trip) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ChatBody(
-          tripMembers: const [],
-          onMemberListTap: () {},
-        ),
-      ),
-    );
+  void _handleJoinTrip(Trip trip) async {
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('請先登入')),
+      );
+      return;
+    }
+
+    try {
+      debugPrint('✅ 開始加入行程，trip_id: ${trip.id}, user_id: ${user.id}');
+
+      // 1️⃣ 檢查是否已經加入過這個行程
+      final exist = await supabase
+          .from('trip_members')
+          .select('id')
+          .eq('trip_id', trip.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (exist != null) {
+        debugPrint('⚠️ 用戶已經在此行程中');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('你已經加入過此行程')),
+        );
+        return;
+      }
+
+      // 2️⃣ 加入行程
+      debugPrint('✅ 寫入 trip_members...');
+      await supabase.from('trip_members').insert({
+        'trip_id': trip.id,
+        'user_id': user.id,
+        'role': 'passenger',  // ✅ 加上 role
+        'join_time': DateTime.now().toIso8601String(),  // ✅ 加上 join_time
+      });
+
+      debugPrint('✅ 成功加入 trip_members');
+
+      // 3️⃣ 成功提示
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已成功加入行程')),
+        );
+      }
+
+    } catch (e) {
+      debugPrint('❌ 加入行程失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('無法加入行程: $e')),
+        );
+      }
+    }
   }
+
 
   /// ⭐ 建立行程 → 成功後重新抓資料
   void _handleCreateTrip() async {

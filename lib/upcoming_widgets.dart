@@ -1,23 +1,25 @@
 import 'package:flutter/material.dart';
 import 'trip_model.dart';
-import 'passenger_widgets.dart'; // 借用 PassengerTripCard
-import 'stats_page.dart'; // 引入統計頁面 (為了成員詳細資料跳轉)
+import 'passenger_widgets.dart';
+import 'stats_page.dart';
 
 // ==========================================
 //  1. UI 元件：即將出發行程的整頁介面 (UpcomingBody)
 // ==========================================
 class UpcomingBody extends StatelessWidget {
-  final bool isDriver; 
+  final bool isDriver;
   final List<Trip> upcomingTrips;
-  final Function(Trip) onCancelTrip; 
+  final Map<String, String> roleMap;  // ✅ 新增：每個 trip 的 role
+  final Function(Trip) onCancelTrip;
   final Function(Trip) onChatTrip;
   final Function(Trip) onDetailTap;
-  final Function(Trip)? onDepartTrip; 
+  final Function(Trip)? onDepartTrip;
 
   const UpcomingBody({
     super.key,
     required this.isDriver,
     required this.upcomingTrips,
+    required this.roleMap,  // ✅ 新增
     required this.onCancelTrip,
     required this.onChatTrip,
     required this.onDetailTap,
@@ -40,71 +42,62 @@ class UpcomingBody extends StatelessWidget {
       body: upcomingTrips.isEmpty
           ? _buildEmptyState()
           : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: upcomingTrips.length,
-              itemBuilder: (context, index) {
-                final trip = upcomingTrips[index];
-                
-                // 邏輯：第一張卡片是參加別人的(不能出發)，後面的是自己創的(可出發)
-                final bool isFirstCard = index == 0;
+        padding: const EdgeInsets.all(20),
+        itemCount: upcomingTrips.length,
+        itemBuilder: (context, index) {
+          final trip = upcomingTrips[index];
 
-                String cancelBtnText;
-                VoidCallback? departAction;
+          // ✅ 從 roleMap 取得該行程的 role
+          final role = roleMap[trip.id] ?? 'passenger';
+          final isCreator = (role == 'creator');
 
-                if (isDriver) {
-                  // --- 司機模式 ---
-                  cancelBtnText = '取消行程';
-                  departAction = null; 
-                } else {
-                  // --- 乘客模式 ---
-                  if (isFirstCard) {
-                    cancelBtnText = '離開';
-                    departAction = null; 
-                  } else {
-                    cancelBtnText = '取消行程';
-                    departAction = () => onDepartTrip?.call(trip);
-                  }
-                }
+          String cancelBtnText;
+          VoidCallback? departAction;
 
-                // 判斷是否為自己創建的行程 (乘客端且不是第一張)
-                bool isCreatedByMe = !isDriver && !isFirstCard;
+          if (isCreator) {
+            // ✅ 創建者：可以取消行程、可以出發
+            cancelBtnText = '取消行程';
+            departAction = () => onDepartTrip?.call(trip);
+          } else {
+            // ✅ 普通乘客：可以離開、不能出發
+            cancelBtnText = '離開';
+            departAction = null;
+          }
 
-                Widget card = PassengerTripCard(
-                  trip: trip,
-                  onDetailTap: () => onDetailTap(trip),
-                  onJoin: null,
-                  onChat: () => onChatTrip(trip),
-                  cancelText: cancelBtnText,
-                  onDepart: departAction, 
-                  onCancel: () => onCancelTrip(trip),
-                  
-                  // 如果是自己創建的卡片，直接顯示紅點
-                  hasNotification: isCreatedByMe,
-                );
+          Widget card = PassengerTripCard(
+            trip: trip,
+            onDetailTap: () => onDetailTap(trip),
+            onJoin: null,
+            onChat: () => onChatTrip(trip),
+            cancelText: cancelBtnText,
+            onDepart: departAction,
+            onCancel: () => onCancelTrip(trip),
+            hasNotification: isCreator,  // ✅ 創建者顯示紅點
+          );
 
-                if (isCreatedByMe) {
-                  return Stack(
-                    children: [
-                      card,
-                      const Positioned(
-                        left: 28,
-                        bottom: 40,
-                        child: Text(
-                          '此行程由您創建',
-                          style: TextStyle(
-                            color: Colors.grey, 
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }
+          if (isCreator) {
+            return Stack(
+              children: [
+                card,
+                const Positioned(
+                  left: 28,
+                  bottom: 40,
+                  child: Text(
+                    '此行程由您創建',
+                    style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
 
-                return card;
-              },
-            ),
+          return card;
+        },
+      ),
     );
   }
 
@@ -130,7 +123,7 @@ class UpcomingBody extends StatelessWidget {
 // ==========================================
 class PassengerTripDetailsDialog extends StatelessWidget {
   final Trip trip;
-  final List<Map<String, dynamic>> members; 
+  final List<Map<String, dynamic>> members;
 
   const PassengerTripDetailsDialog({
     super.key,

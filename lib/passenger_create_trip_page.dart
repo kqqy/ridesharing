@@ -16,7 +16,7 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
   final TextEditingController _destinationController = TextEditingController();
   final TextEditingController _timeController = TextEditingController();
   final TextEditingController _seatsController =
-      TextEditingController(text: '4'); // 預設固定 4
+  TextEditingController(text: '4');
   final TextEditingController _noteController = TextEditingController();
 
   DateTime? _selectedDepartTime;
@@ -87,7 +87,6 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
 
     final int seatsTotal = int.tryParse(_seatsController.text.trim()) ?? 4;
 
-    // ✅ 1) 取得目前登入者
     final user = supabase.auth.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -98,20 +97,17 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
     final String creatorId = user.id;
 
     try {
-      // ✅ 2) 保險：先確保 public.users 有這個人（避免 trips 外鍵炸掉）
-      // 依你的表結構：users 有 nickname / email / phone（phone 若沒有就不寫）
       final String fallbackNickname =
-          (user.email?.split('@').first ?? 'user').trim();
+      (user.email?.split('@').first ?? 'user').trim();
 
       await supabase.from('users').upsert({
         'id': creatorId,
         if (user.email != null) 'email': user.email,
         'nickname': fallbackNickname,
-        // phone 你如果要寫，這裡需要你有 phone 來源（通常註冊時存）
       });
 
-      // ✅ 3) 寫入 trips
-      await supabase.from('trips').insert({
+      // ✅ 3) 寫入 trips，並取得新建的 trip_id
+      final tripResponse = await supabase.from('trips').insert({
         'creator_id': creatorId,
         'origin': origin,
         'destination': destination,
@@ -120,19 +116,33 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
         'seats_left': seatsTotal,
         'status': 'open',
         'note': note,
+      }).select().single();
+
+      final newTripId = tripResponse['id'];
+
+      // ✅ 4) 把創建者也加入 trip_members，role 設為 creator
+      await supabase.from('trip_members').insert({
+        'trip_id': newTripId,
+        'user_id': creatorId,
+        'role': 'creator',  // ✅✅✅ 改成 creator
+        'join_time': DateTime.now().toIso8601String(),
       });
 
       if (!mounted) return;
       Navigator.pop(context, true);
+
     } on PostgrestException catch (e) {
-      // PostgREST 更容易看懂
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('建立行程失敗（DB）：${e.message}')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('建立行程失敗（DB）：${e.message}')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('建立行程失敗：$e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('建立行程失敗：$e')),
+        );
+      }
     }
   }
 

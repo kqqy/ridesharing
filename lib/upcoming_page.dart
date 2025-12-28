@@ -19,6 +19,7 @@ class UpcomingPage extends StatefulWidget {
 
 class _UpcomingPageState extends State<UpcomingPage> {
   List<Trip> _upcomingTrips = [];
+  Map<String, String> _roleMap = {};  // ✅ 新增：記錄每個行程的 role
   bool _loading = true;
 
   @override
@@ -28,49 +29,74 @@ class _UpcomingPageState extends State<UpcomingPage> {
   }
 
   // ===============================
-  // 從 Supabase 撈即將出發行程
-  // status: open / active
+  // 讀取即將出發行程
   // ===============================
   Future<void> _fetchUpcomingTrips() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) {
+      setState(() => _loading = false);
+      return;
+    }
+
     try {
-      final user = supabase.auth.currentUser;
-      if (user == null) return;
-
+      // ✅ 從 trip_members 查該用戶參與的行程
       final data = await supabase
-          .from('trips')
-          .select()
-          .or('status.eq.open,status.eq.active')
-          .order('depart_time');
+          .from('trip_members')
+          .select('trip_id, role, trips!inner(*)')
+          .eq('user_id', user.id);
 
-      final trips = (data as List).map<Trip>((e) {
-        return Trip(
-          id: e['id'].toString(),
-          origin: e['origin'] ?? '',
-          destination: e['destination'] ?? '',
-          departTime: DateTime.parse(e['depart_time']),
-          seatsTotal: e['seats_total'] ?? 0,
-          seatsLeft: e['seats_left'] ?? 0,
-          status: e['status'] ?? '',
-          note: e['note'] ?? '',
-        );
+      // ✅ 在客戶端過濾 open 和 started（排除 completed）
+      final filteredData = data.where((p) {
+        final tripData = p['trips'] as Map<String, dynamic>;
+        final status = tripData['status'] as String;
+        return status == 'open' || status == 'started';
       }).toList();
 
+      final trips = <Trip>[];
+      final roleMap = <String, String>{};
+
+      for (var p in filteredData) {
+        final tripData = p['trips'] as Map<String, dynamic>;
+        final tripId = tripData['id'].toString();
+
+        // ✅ 記錄該行程的 role
+        roleMap[tripId] = p['role'] as String;
+
+        trips.add(Trip(
+          id: tripId,
+          origin: tripData['origin'] ?? '',
+          destination: tripData['destination'] ?? '',
+          departTime: DateTime.parse(tripData['depart_time']),
+          seatsTotal: tripData['seats_total'] ?? 0,
+          seatsLeft: tripData['seats_left'] ?? 0,
+          status: tripData['status'] ?? '',
+          note: tripData['note'] ?? '',
+        ));
+      }
+
+      if (!mounted) return;
       setState(() {
         _upcomingTrips = trips;
+        _roleMap = roleMap;  // ✅ 保存 role 資訊
         _loading = false;
       });
     } catch (e) {
       debugPrint('fetch upcoming trips error: $e');
+      if (!mounted) return;
       setState(() => _loading = false);
     }
   }
 
   // ===============================
-  // 取消 / 離開行程（目前只做 UI）
+  // ❗取消 / 離開行程
   // ===============================
   void _handleCancelTrip(Trip trip) {
-    String title = widget.isDriver ? '確定取消行程？' : '⚠️ 退出警告';
-    Widget content = widget.isDriver
+    // ✅ 從 roleMap 取得該行程的 role
+    final role = _roleMap[trip.id] ?? 'passenger';
+    final isCreator = (role == 'creator');
+
+    String title = isCreator ? '確定取消行程？' : '⚠️ 退出警告';
+    Widget content = isCreator
         ? const Text('取消後將通知所有乘客，且無法復原。')
         : const Column(
       mainAxisSize: MainAxisSize.min,
@@ -97,7 +123,58 @@ class _UpcomingPageState extends State<UpcomingPage> {
         content: content,
         actions: [
           ElevatedButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              Navigator.pop(context);
+
+              final user = supabase.auth.currentUser;
+              if (user == null) return;
+
+              try {
+                // ✅ 用 role 判斷是否為創建者
+                if (isCreator) {
+                  // 創建者：刪除整個行程
+                  await supabase.from('trips').delete().eq('id', trip.id);
+                } else {
+                  // 參與者：只刪自己的記錄
+                  final now = DateTime.now();
+                  final hoursDiff = trip.departTime.difference(now).inHours;
+                  final isFlake = hoursDiff < 6;
+
+                  if (isFlake) {
+                    await supabase.from('violations').insert({
+                      'user_id': user.id,
+                      'trip_id': trip.id,
+                      'violation_type': 'flake',
+                    });
+                  }
+
+                  await supabase
+                      .from('trip_members')
+                      .delete()
+                      .eq('trip_id', trip.id)
+                      .eq('user_id', user.id);
+                }
+
+                // 前端同步移除
+                if (mounted) {
+                  setState(() {
+                    _upcomingTrips.removeWhere((t) => t.id == trip.id);
+                    _roleMap.remove(trip.id);  // ✅ 也移除 roleMap
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('行程已移除')),
+                  );
+                }
+              } catch (e) {
+                debugPrint('cancel trip error: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('操作失敗：$e')),
+                  );
+                }
+              }
+            },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
@@ -114,32 +191,30 @@ class _UpcomingPageState extends State<UpcomingPage> {
   }
 
   // ===============================
-  // 行程聊天室
+  // 聊天
   // ===============================
   void _handleChatTrip(Trip trip) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) =>ChatPage(tripId: trip.id)),
+      MaterialPageRoute(builder: (_) => ChatPage(tripId: trip.id)),
     );
   }
 
   // ===============================
-  // 乘客出發 → 進行中
+  // 乘客出發
   // ===============================
   void _handleDepartTrip(Trip trip) {
-    final List<String> tripMembers = ['司機', '我 (乘客)', '乘客 B'];
-
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => PassengerManifestDialog(
-        members: tripMembers,
+        members: const ['司機', '我'],
         onConfirm: () {
           Navigator.pop(context);
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ActiveTripPage(tripId: trip.id), // ✅ 關鍵
+              builder: (_) => ActiveTripPage(tripId: trip.id),
             ),
           );
         },
@@ -148,30 +223,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
   }
 
   // ===============================
-  // 行程詳細資訊
-  // ===============================
-  void _handleTripDetail(Trip trip) {
-    _showTripDetails(trip);
-  }
-
-  void _showTripDetails(Trip trip) {
-    final List<Map<String, dynamic>> fakeMembers = [
-      {'name': '王大明', 'role': '司機', 'rating': 4.9},
-      {'name': '乘客 A', 'role': '乘客', 'rating': 5.0},
-    ];
-
-    showDialog(
-      context: context,
-      builder: (context) => PassengerTripDetailsDialog(
-        trip: trip,
-        members: fakeMembers,
-      ),
-    );
-  }
-
-  // ===============================
   // UI
   // ===============================
+  @override
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -183,9 +237,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
     return UpcomingBody(
       isDriver: widget.isDriver,
       upcomingTrips: _upcomingTrips,
+      roleMap: _roleMap,  // ✅ 傳入 roleMap
       onCancelTrip: _handleCancelTrip,
       onChatTrip: _handleChatTrip,
-      onDetailTap: _handleTripDetail,
+      onDetailTap: (_) {},
       onDepartTrip: widget.isDriver ? null : _handleDepartTrip,
     );
   }
