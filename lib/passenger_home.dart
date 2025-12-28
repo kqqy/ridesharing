@@ -20,8 +20,6 @@ class PassengerHome extends StatefulWidget {
 
 class _PassengerHomeState extends State<PassengerHome> {
   bool _showManageMenu = false;
-
-  /// ⭐ 不再用寫死樣本
   List<Trip> _exploreTrips = [];
 
   final supabase = Supabase.instance.client;
@@ -29,15 +27,14 @@ class _PassengerHomeState extends State<PassengerHome> {
   @override
   void initState() {
     super.initState();
-    _loadExploreTrips(); // ⭐ 一進頁面就從 DB 抓
+    _loadExploreTrips();
   }
 
-  /// ⭐ 從 Supabase 讀取探索行程
   Future<void> _loadExploreTrips() async {
     final data = await supabase
         .from('trips')
         .select()
-        .eq('status', 'open')  // ✅ 只顯示招募中
+        .eq('status', 'open')
         .order('depart_time');
 
     final trips = (data as List)
@@ -78,17 +75,12 @@ class _PassengerHomeState extends State<PassengerHome> {
     }
   }
 
+  // ✅ 簡化：直接使用會自動載入成員的 Dialog
   void _handleTripDetail(Trip trip) {
-    final List<Map<String, dynamic>> fakeMembers = [
-      {'name': '王司機', 'role': '司機', 'rating': 4.7},
-      {'name': '乘客 B', 'role': '乘客', 'rating': 4.5},
-    ];
-
     showDialog(
       context: context,
       builder: (_) => PassengerTripDetailsDialog(
-        trip: trip,
-        members: fakeMembers,
+        trip: trip,  // ✅ 只傳 trip，Dialog 會自己載入成員
       ),
     );
   }
@@ -104,54 +96,73 @@ class _PassengerHomeState extends State<PassengerHome> {
     }
 
     try {
-      debugPrint('✅ 開始加入行程，trip_id: ${trip.id}, user_id: ${user.id}');
+      debugPrint('✅ 開始申請加入行程，trip_id: ${trip.id}, user_id: ${user.id}');
 
-      // 1️⃣ 檢查是否已經加入過這個行程
-      final exist = await supabase
+      // 1️⃣ 檢查是否已經是成員
+      final existMember = await supabase
           .from('trip_members')
           .select('id')
           .eq('trip_id', trip.id)
           .eq('user_id', user.id)
           .maybeSingle();
 
-      if (exist != null) {
+      if (existMember != null) {
         debugPrint('⚠️ 用戶已經在此行程中');
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('你已經加入過此行程')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('你已經是此行程的成員')),
+          );
+        }
         return;
       }
 
-      // 2️⃣ 加入行程
-      debugPrint('✅ 寫入 trip_members...');
-      await supabase.from('trip_members').insert({
+      // 2️⃣ 檢查是否已經發送過申請
+      final existRequest = await supabase
+          .from('join_requests')
+          .select('trip_id')
+          .eq('trip_id', trip.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existRequest != null) {
+        debugPrint('⚠️ 申請已發送，等待審核');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('申請已發送，請等待創建者審核')),
+          );
+        }
+        return;
+      }
+
+      // 3️⃣ 發送加入申請
+      debugPrint('✅ 寫入 join_requests...');
+      await supabase.from('join_requests').insert({
         'trip_id': trip.id,
         'user_id': user.id,
-        'role': 'passenger',  // ✅ 加上 role
-        'join_time': DateTime.now().toIso8601String(),  // ✅ 加上 join_time
       });
 
-      debugPrint('✅ 成功加入 trip_members');
+      debugPrint('✅ 成功發送加入申請');
 
-      // 3️⃣ 成功提示
+      // 4️⃣ 成功提示
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已成功加入行程')),
+          const SnackBar(
+            content: Text('已發送加入申請，請等待創建者審核'),
+            backgroundColor: Colors.green,
+          ),
         );
       }
 
     } catch (e) {
-      debugPrint('❌ 加入行程失敗: $e');
+      debugPrint('❌ 發送申請失敗: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('無法加入行程: $e')),
+          SnackBar(content: Text('發送申請失敗: $e')),
         );
       }
     }
   }
 
-
-  /// ⭐ 建立行程 → 成功後重新抓資料
   void _handleCreateTrip() async {
     final result = await Navigator.push(
       context,
@@ -161,7 +172,7 @@ class _PassengerHomeState extends State<PassengerHome> {
     );
 
     if (result == true) {
-      _loadExploreTrips(); // ⭐ 關鍵
+      _loadExploreTrips();
     }
   }
 

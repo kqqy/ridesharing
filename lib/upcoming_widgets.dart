@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';  // ✅ 加這行
 import 'trip_model.dart';
 import 'passenger_widgets.dart';
 import 'stats_page.dart';
+
+final supabase = Supabase.instance.client;  // ✅ 加這行
 
 // ==========================================
 //  1. UI 元件：即將出發行程的整頁介面 (UpcomingBody)
@@ -121,15 +124,87 @@ class UpcomingBody extends StatelessWidget {
 // ==========================================
 //  2. UI 元件：行程詳細資訊視窗
 // ==========================================
-class PassengerTripDetailsDialog extends StatelessWidget {
+// ==========================================
+//  2. UI 元件：行程詳細資訊視窗
+// ==========================================
+class PassengerTripDetailsDialog extends StatefulWidget {
   final Trip trip;
-  final List<Map<String, dynamic>> members;
 
   const PassengerTripDetailsDialog({
     super.key,
     required this.trip,
-    required this.members,
   });
+
+  @override
+  State<PassengerTripDetailsDialog> createState() => _PassengerTripDetailsDialogState();
+}
+
+class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog> {
+  List<Map<String, dynamic>> _members = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMembers();
+  }
+
+  // ✅ 從資料庫載入成員資料
+  Future<void> _loadMembers() async {
+    setState(() => _loading = true);
+
+    try {
+      // ✅ 從資料庫讀取該行程的所有成員
+      final data = await supabase
+          .from('trip_members')
+          .select('''
+            user_id,
+            role,
+            users!trip_members_user_id_fkey(
+              nickname
+            )
+          ''')
+          .eq('trip_id', widget.trip.id);
+
+      // ✅ 對每個成員，查詢評分
+      final members = <Map<String, dynamic>>[];
+
+      for (var member in data) {
+        final userId = member['user_id'] as String;
+
+        // 查詢平均評分
+        final ratingData = await supabase
+            .from('ratings')
+            .select('rating')
+            .eq('to_user', userId);
+
+        double avgRating = 5.0;
+        if (ratingData.isNotEmpty) {
+          final sum = ratingData.fold<int>(0, (prev, r) => prev + (r['rating'] as int));
+          avgRating = sum / ratingData.length;
+        }
+
+        members.add({
+          'name': member['users']['nickname'] ?? '未知',
+          'role': member['role'] == 'creator' ? '創建者' :
+          member['role'] == 'driver' ? '司機' : '乘客',
+          'rating': avgRating,
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _members = members;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('載入成員失敗: $e');
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -152,7 +227,9 @@ class PassengerTripDetailsDialog extends StatelessWidget {
             ),
             const Divider(),
             Expanded(
-              child: SingleChildScrollView(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -178,15 +255,16 @@ class PassengerTripDetailsDialog extends StatelessWidget {
                     const SizedBox(height: 20),
                     _buildSectionTitle('行程資訊'),
                     const SizedBox(height: 8),
-                    _buildDetailItem(Icons.my_location, '出發地', trip.origin),
-                    _buildDetailItem(Icons.flag, '目的地', trip.destination),
-                    _buildDetailItem(Icons.access_time, '出發時間', trip.timeText),
-                    _buildDetailItem(Icons.event_seat, '剩餘座位', trip.seatsText),
-                    _buildDetailItem(Icons.note, '備註', trip.note.isEmpty ? '無' : trip.note),
+                    _buildDetailItem(Icons.my_location, '出發地', widget.trip.origin),
+                    _buildDetailItem(Icons.flag, '目的地', widget.trip.destination),
+                    _buildDetailItem(Icons.access_time, '出發時間', widget.trip.timeText),
+                    _buildDetailItem(Icons.event_seat, '剩餘座位', widget.trip.seatsText),
+                    _buildDetailItem(Icons.note, '備註', widget.trip.note.isEmpty ? '無' : widget.trip.note),
                     const SizedBox(height: 20),
                     _buildSectionTitle('成員列表'),
                     const SizedBox(height: 8),
-                    ...members.map((member) => Container(
+                    // ✅ 顯示真實成員資料
+                    ..._members.map((member) => Container(
                       margin: const EdgeInsets.only(bottom: 8),
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
@@ -220,7 +298,7 @@ class PassengerTripDetailsDialog extends StatelessWidget {
                               const Icon(Icons.star, size: 16, color: Colors.amber),
                               const SizedBox(width: 4),
                               Text(
-                                member['rating'].toString(),
+                                member['rating'].toStringAsFixed(1),
                                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                               ),
                             ],
@@ -267,37 +345,172 @@ class PassengerTripDetailsDialog extends StatelessWidget {
 }
 
 // ==========================================
-//  3. 加入要求視窗 (JoinRequestsDialog)
+//  3. 行程成員視窗 (JoinRequestsDialog)
+// ==========================================
+// ==========================================
+//  3. 加入申請視窗 (JoinRequestsDialog)
 // ==========================================
 class JoinRequestsDialog extends StatefulWidget {
-  const JoinRequestsDialog({super.key});
+  final String tripId;
+
+  const JoinRequestsDialog({
+    super.key,
+    required this.tripId,
+  });
 
   @override
   State<JoinRequestsDialog> createState() => _JoinRequestsDialogState();
 }
 
 class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
-  final List<Map<String, dynamic>> _requests = [
-    {
-      'id': 1, 
-      'name': '新成員 A', 
-      'rating': 4.5,
-      'violation': 0, 
-      'noShow': 2,    
-    },
-    {
-      'id': 2, 
-      'name': '新成員 B', 
-      'rating': 3.8,
-      'violation': 1,
-      'noShow': 0,
-    },
-  ];
+  List<Map<String, dynamic>> _requests = [];
+  bool _loading = true;
 
-  void _removeRequest(int id) {
-    setState(() {
-      _requests.removeWhere((element) => element['id'] == id);
-    });
+  @override
+  void initState() {
+    super.initState();
+    _loadRequests();
+  }
+
+  // ✅ 從 join_requests 載入待審核的申請
+  Future<void> _loadRequests() async {
+    setState(() => _loading = true);
+
+    try {
+      // ✅ 查詢待審核的申請
+      final data = await supabase
+          .from('join_requests')
+          .select('''
+            trip_id,
+            user_id,
+            created_at,
+            users!join_requests_user_id_fkey(
+              nickname
+            )
+          ''')
+          .eq('trip_id', widget.tripId)
+          .order('created_at', ascending: true);
+
+      // ✅ 對每個申請者，查詢評分和違規記錄
+      final requests = <Map<String, dynamic>>[];
+
+      for (var req in data) {
+        final userId = req['user_id'] as String;
+
+        // 查詢平均評分
+        final ratingData = await supabase
+            .from('ratings')
+            .select('rating')
+            .eq('to_user', userId);
+
+        double avgRating = 5.0;
+        if (ratingData.isNotEmpty) {
+          final sum = ratingData.fold<int>(0, (prev, r) => prev + (r['rating'] as int));
+          avgRating = sum / ratingData.length;
+        }
+
+        // 查詢違規次數
+        final violationData = await supabase
+            .from('violations')
+            .select('id')
+            .eq('user_id', userId);
+
+        requests.add({
+          'user_id': userId,
+          'name': req['users']['nickname'] ?? '未知',
+          'rating': avgRating,
+          'violation': violationData.length,
+          'noShow': 0,
+          'created_at': req['created_at'],
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _requests = requests;
+          _loading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('載入申請失敗: $e');
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  // ✅ 核准申請
+  Future<void> _handleApprove(Map<String, dynamic> request) async {
+    try {
+      // 1️⃣ 把該用戶加入 trip_members
+      await supabase.from('trip_members').insert({
+        'trip_id': widget.tripId,
+        'user_id': request['user_id'],
+        'role': 'passenger',
+        'join_time': DateTime.now().toIso8601String(),
+      });
+
+      // 2️⃣ 刪除申請記錄
+      await supabase
+          .from('join_requests')
+          .delete()
+          .eq('trip_id', widget.tripId)
+          .eq('user_id', request['user_id']);
+
+      // 3️⃣ 前端移除
+      if (mounted) {
+        setState(() {
+          _requests.removeWhere((r) => r['user_id'] == request['user_id']);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已核准 ${request['name']} 的申請'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('核准失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('核准失敗: $e')),
+        );
+      }
+    }
+  }
+
+  // ✅ 拒絕申請
+  Future<void> _handleReject(Map<String, dynamic> request) async {
+    try {
+      // 直接刪除申請記錄
+      await supabase
+          .from('join_requests')
+          .delete()
+          .eq('trip_id', widget.tripId)
+          .eq('user_id', request['user_id']);
+
+      // 前端移除
+      if (mounted) {
+        setState(() {
+          _requests.removeWhere((r) => r['user_id'] == request['user_id']);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('已拒絕 ${request['name']} 的申請'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('拒絕失敗: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('拒絕失敗: $e')),
+        );
+      }
+    }
   }
 
   void _showMemberProfile(Map<String, dynamic> member) {
@@ -324,7 +537,7 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('加入要求', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('加入申請', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.grey),
                   onPressed: () => Navigator.pop(context),
@@ -333,61 +546,66 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
             ),
             const Divider(),
             Expanded(
-              child: _requests.isEmpty 
-              ? const Center(child: Text('目前沒有加入要求', style: TextStyle(color: Colors.grey)))
-              : ListView.builder(
-                  itemCount: _requests.length,
-                  itemBuilder: (context, index) {
-                    final req = _requests[index];
-                    return InkWell(
-                      onTap: () => _showMemberProfile(req),
-                      borderRadius: BorderRadius.circular(12),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50],
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade200),
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              backgroundColor: Colors.orange[100],
-                              child: const Icon(Icons.person, color: Colors.orange),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(req['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  Row(
-                                    children: [
-                                      const Icon(Icons.star, size: 14, color: Colors.amber),
-                                      const SizedBox(width: 2),
-                                      Text(req['rating'].toString(), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                            // 打勾按鈕 (靜默)
-                            IconButton(
-                              icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
-                              onPressed: () {},
-                            ),
-                            // 打叉按鈕 (靜默)
-                            IconButton(
-                              icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
-                              onPressed: () {},
-                            ),
-                          ],
-                        ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _requests.isEmpty
+                  ? const Center(child: Text('目前沒有加入申請', style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                itemCount: _requests.length,
+                itemBuilder: (context, index) {
+                  final request = _requests[index];
+                  return InkWell(
+                    onTap: () => _showMemberProfile(request),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade200),
                       ),
-                    );
-                  },
-                ),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            backgroundColor: Colors.orange[100],
+                            child: const Icon(Icons.person, color: Colors.orange),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(request['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star, size: 14, color: Colors.amber),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      request['rating'].toStringAsFixed(1),
+                                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          // ✅ 核准按鈕（綠勾勾）
+                          IconButton(
+                            icon: const Icon(Icons.check_circle, color: Colors.green, size: 30),
+                            onPressed: () => _handleApprove(request),
+                          ),
+                          // ✅ 拒絕按鈕（紅叉叉）
+                          IconButton(
+                            icon: const Icon(Icons.cancel, color: Colors.red, size: 30),
+                            onPressed: () => _handleReject(request),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -417,7 +635,7 @@ class MemberProfileDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: const Color(0xFFEBEFF5), 
+      backgroundColor: const Color(0xFFEBEFF5),
       child: Stack(
         children: [
           Padding(
@@ -466,7 +684,7 @@ class MemberProfileDialog extends StatelessWidget {
 
                 const SizedBox(height: 30),
                 const Divider(color: Colors.black12, thickness: 1),
-                
+
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: const Text('關閉', style: TextStyle(color: Colors.blueGrey, fontSize: 16)),
@@ -482,17 +700,17 @@ class MemberProfileDialog extends StatelessWidget {
               onPressed: () {
                 Navigator.pop(context);
                 Navigator.push(
-                  context, 
-                  MaterialPageRoute(builder: (context) => const StatsPage())
+                    context,
+                    MaterialPageRoute(builder: (context) => const StatsPage())
                 );
               },
               child: const Text(
-                '詳細資料', 
-                style: TextStyle(
-                  color: Colors.blue, 
-                  fontSize: 14, 
-                  fontWeight: FontWeight.bold
-                )
+                  '詳細資料',
+                  style: TextStyle(
+                      color: Colors.blue,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold
+                  )
               ),
             ),
           ),
@@ -526,7 +744,7 @@ class PassengerManifestDialog extends StatefulWidget {
   final VoidCallback onConfirm;
 
   const PassengerManifestDialog({
-    super.key, 
+    super.key,
     required this.members,
     required this.onConfirm,
   });
@@ -581,11 +799,11 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
             ),
             const SizedBox(height: 20),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, 
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context), 
-                  child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16))
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16))
                 ),
                 ElevatedButton(
                   onPressed: widget.onConfirm,

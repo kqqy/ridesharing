@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 import 'member_list_page.dart';
 
@@ -22,27 +23,140 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _scrollController = ScrollController();
 
   List<Map<String, dynamic>> _messages = [];
+  List<Map<String, dynamic>> _tripMembers = [];
   bool _loading = true;
+  bool _loadingMembers = true;
 
-  // ===== 假成員資料（先留，之後你會換成 trip_members）=====
-  //傳送訊息未修復
-  final List<Map<String, dynamic>> _tripMembers = const [
-    {'name': '司機', 'role': '司機', 'isOnline': true},
-    {'name': '乘客 A', 'role': '乘客', 'isOnline': true},
-    {'name': '乘客 B', 'role': '乘客', 'isOnline': false},
-  ];
+  Timer? _heartbeatTimer;  // ✅ 心跳計時器
+  Timer? _refreshTimer;    // ✅ 定期刷新在線狀態
 
   @override
   void initState() {
     super.initState();
+    _startHeartbeat();    // ✅ 開始心跳
+    _startRefreshTimer(); // ✅ 開始定期刷新
     _fetchMessages();
+    _fetchMembers();
   }
 
   @override
   void dispose() {
     _msgController.dispose();
     _scrollController.dispose();
+    _heartbeatTimer?.cancel();  // ✅ 停止心跳
+    _refreshTimer?.cancel();    // ✅ 停止刷新
     super.dispose();
+  }
+
+  // ===============================
+  // ✅ 開始心跳（每 30 秒更新一次 last_seen）
+  // ===============================
+  void _startHeartbeat() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    // 立即更新一次
+    _updateLastSeen(user.id);
+
+    // 每 30 秒更新一次
+    _heartbeatTimer = Timer.periodic(
+      const Duration(seconds: 30),
+          (_) => _updateLastSeen(user.id),
+    );
+  }
+
+  // ===============================
+  // ✅ 更新 last_seen
+  // ===============================
+  Future<void> _updateLastSeen(String userId) async {
+    try {
+      await supabase
+          .from('users')
+          .update({'last_seen': DateTime.now().toIso8601String()})
+          .eq('id', userId);
+      debugPrint('✅ 更新 last_seen: $userId');
+    } catch (e) {
+      debugPrint('❌ 更新 last_seen 失敗: $e');
+    }
+  }
+
+  // ===============================
+  // ✅ 開始定期刷新在線狀態（每 30 秒）
+  // ===============================
+  void _startRefreshTimer() {
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+          (_) => _fetchMembers(), // 重新載入成員（會更新在線狀態）
+    );
+  }
+
+  // ===============================
+  // ✅ 判斷是否在線（5 分鐘內算在線）
+  // ===============================
+  bool _isOnline(DateTime? lastSeen) {
+    if (lastSeen == null) return false;
+    final diff = DateTime.now().difference(lastSeen);
+    return diff.inMinutes < 5;
+  }
+
+  // ===============================
+  // 讀取行程成員
+  // ===============================
+  Future<void> _fetchMembers() async {
+    try {
+      final data = await supabase
+          .from('trip_members')
+          .select('''
+            user_id,
+            role,
+            users!trip_members_user_id_fkey(
+              nickname,
+              last_seen
+            )
+          ''')
+          .eq('trip_id', widget.tripId);
+
+      final members = <Map<String, dynamic>>[];
+
+      for (var member in data) {
+        final userId = member['user_id'] as String;
+        final nickname = member['users']['nickname'] ?? '未知';
+        final role = member['role'] as String;
+        final lastSeenStr = member['users']['last_seen'];
+
+        String displayRole;
+        if (role == 'creator') {
+          displayRole = '創建者';
+        } else if (role == 'driver') {
+          displayRole = '司機';
+        } else {
+          displayRole = '乘客';
+        }
+
+        // ✅ 判斷在線狀態
+        final lastSeen = lastSeenStr != null ? DateTime.parse(lastSeenStr) : null;
+        final isOnline = _isOnline(lastSeen);
+
+        members.add({
+          'user_id': userId,
+          'name': nickname,
+          'role': displayRole,
+          'isOnline': isOnline,
+        });
+      }
+
+      if (mounted) {
+        setState(() {
+          _tripMembers = members;
+          _loadingMembers = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('fetch members error: $e');
+      if (mounted) {
+        setState(() => _loadingMembers = false);
+      }
+    }
   }
 
   // ===============================
@@ -77,6 +191,9 @@ class _ChatPageState extends State<ChatPage> {
 
     final user = supabase.auth.currentUser;
     if (user == null) return;
+
+    // ✅ 發送訊息時也更新 last_seen
+    await _updateLastSeen(user.id);
 
     await supabase.from('trip_messages').insert({
       'trip_id': widget.tripId,
@@ -133,6 +250,15 @@ class _ChatPageState extends State<ChatPage> {
         ),
         centerTitle: true,
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Center(
+              child: Text(
+                '${_tripMembers.where((m) => m['isOnline'] == true).length} 人在線',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.people_outline),
             onPressed: _openMemberList,
@@ -177,7 +303,7 @@ class _ChatPageState extends State<ChatPage> {
 
         final time = msg['created_at']
             .toString()
-            .substring(11, 16); // HH:mm
+            .substring(11, 16);
 
         return _buildMessageBubble(
           text: msg['content'] ?? '',
