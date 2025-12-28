@@ -1,8 +1,12 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:geolocator/geolocator.dart';
 
 class ActiveTripBody extends StatefulWidget {
   final VoidCallback onSOS;
@@ -10,7 +14,7 @@ class ActiveTripBody extends StatefulWidget {
   final VoidCallback onShare;
   final VoidCallback onChat;
 
-  // ✅ 改成只傳 tripId，自己查 trips 表拿 origin/destination
+  // ✅ 只傳 tripId，自己查 trips 表拿 origin/destination
   final String tripId;
 
   const ActiveTripBody({
@@ -42,8 +46,21 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
   final Set<Marker> _markers = {};
   final Set<Polyline> _polylines = {};
 
+  // ✅ 存「路線點」用來做偏移計算
+  List<LatLng> _routePoints = [];
+
   bool _loading = true;
   bool _routeBuilt = false;
+
+  // ✅ 路徑偏移狀態
+  static const double _offRouteThresholdMeters = 200.0; // ✅ 你說門檻先 200
+  bool _offRoute = false;
+  double _offRouteMeters = 0;
+
+  DateTime? _lastOffRouteDialogAt; // 避免狂跳
+  static const Duration _dialogCooldown = Duration(seconds: 30);
+
+  StreamSubscription<Position>? _posSub;
 
   // ⚠️ Directions 仍可能 REQUEST_DENIED（API/限制/Billing 問題），拿不到就畫直線 fallback
   static const String _googleApiKey = 'AIzaSyCQjEBcgsPbLD14kXGPcG7UUvDyd4PlPH0';
@@ -52,6 +69,12 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
   void initState() {
     super.initState();
     _loadTripAndBuild(); // ✅ 一進來就讀 DB
+  }
+
+  @override
+  void dispose() {
+    _posSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadTripAndBuild() async {
@@ -68,7 +91,10 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
       final origin = (trip['origin'] as String?)?.trim();
       final destination = (trip['destination'] as String?)?.trim();
 
-      if (origin == null || origin.isEmpty || destination == null || destination.isEmpty) {
+      if (origin == null ||
+          origin.isEmpty ||
+          destination == null ||
+          destination.isEmpty) {
         throw '此行程缺少出發地或目的地（trips.origin / trips.destination）';
       }
 
@@ -81,8 +107,11 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
       // 3) marker
       _buildMarkers();
 
-      // 4) 嘗試畫路線（Directions）；失敗則 fallback 直線
+      // 4) 畫路線（Directions）；失敗則 fallback 直線
       await _buildRouteOnce();
+
+      // 5) ✅ 開始監聽定位，做偏移偵測
+      await _startOffRouteMonitoring();
     } on PostgrestException catch (e) {
       debugPrint('load trip failed: ${e.message}');
       if (mounted) {
@@ -103,15 +132,12 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
   }
 
   Future<void> _geocodeEndpoints(String originText, String destText) async {
-    // 這裡不要再用 widget.origin / widget.destination
-    // 直接用傳進來的 originText / destText（就是 DB 讀到的）
     final originLoc = await locationFromAddress(originText);
     final destLoc = await locationFromAddress(destText);
 
     _originLatLng = LatLng(originLoc.first.latitude, originLoc.first.longitude);
     _destLatLng = LatLng(destLoc.first.latitude, destLoc.first.longitude);
   }
-
 
   void _buildMarkers() {
     if (_originLatLng == null || _destLatLng == null) return;
@@ -138,7 +164,7 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
 
     if (_originLatLng == null || _destLatLng == null) return;
 
-    // ✅ 一進來就對準出發地
+    // ✅ 一進來就對準出發地（mapController 可能還沒建立，沒關係）
     await _mapController?.animateCamera(
       CameraUpdate.newLatLngZoom(_originLatLng!, 15),
     );
@@ -154,11 +180,17 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
         ),
       );
 
-      debugPrint('Directions status=${result.status} error=${result.errorMessage}');
+      debugPrint(
+          'Directions status=${result.status} error=${result.errorMessage}');
       debugPrint('Directions points=${result.points.length}');
 
       if (result.points.isNotEmpty) {
-        final routeLatLng = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        final routeLatLng = result.points
+            .map((p) => LatLng(p.latitude, p.longitude))
+            .toList();
+
+        _routePoints = routeLatLng;
+
         if (!mounted) return;
         setState(() {
           _polylines
@@ -172,7 +204,9 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
         return;
       }
 
-      // ❗Directions 拿不到（例如 REQUEST_DENIED）→ 用直線先頂著
+      // ❗Directions 拿不到（例如 REQUEST_DENIED）→ 用直線先頂著（也給偏移偵測用）
+      _routePoints = [_originLatLng!, _destLatLng!];
+
       if (!mounted) return;
       setState(() {
         _polylines
@@ -185,9 +219,155 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
       });
     } catch (e) {
       debugPrint('build route failed: $e');
+      // 即使失敗也給 fallback
+      _routePoints = [_originLatLng!, _destLatLng!];
+      if (mounted) {
+        setState(() {
+          _polylines
+            ..clear()
+            ..add(Polyline(
+              polylineId: const PolylineId('fallback_line'),
+              points: [_originLatLng!, _destLatLng!],
+              width: 4,
+            ));
+        });
+      }
     }
   }
 
+  // =========================
+  // ✅ 路徑偏移監聽（200m）
+  // =========================
+  Future<void> _startOffRouteMonitoring() async {
+    if (_routePoints.length < 2) return;
+
+    // 1) 檢查定位服務
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('定位服務未開啟，無法偵測路徑偏移')),
+      );
+      return;
+    }
+
+    // 2) 權限
+    LocationPermission perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) {
+      perm = await Geolocator.requestPermission();
+    }
+    if (perm == LocationPermission.denied ||
+        perm == LocationPermission.deniedForever) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('定位權限被拒絕，無法偵測路徑偏移')),
+      );
+      return;
+    }
+
+    // 3) 監聽位置（你可依需求調整精度/頻率）
+    _posSub?.cancel();
+    _posSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // 移動超過 10m 才回報一次（降低耗電）
+      ),
+    ).listen((pos) {
+      final p = LatLng(pos.latitude, pos.longitude);
+      final meters = _minDistanceToPolylineMeters(p, _routePoints);
+
+      final bool nowOffRoute = meters > _offRouteThresholdMeters;
+
+      if (mounted) {
+        setState(() {
+          _offRoute = nowOffRoute;
+          _offRouteMeters = meters;
+        });
+      }
+
+      if (nowOffRoute) {
+        _maybeShowOffRouteDialog(meters);
+      }
+    });
+  }
+
+  void _maybeShowOffRouteDialog(double meters) {
+    final now = DateTime.now();
+    if (_lastOffRouteDialogAt != null &&
+        now.difference(_lastOffRouteDialogAt!) < _dialogCooldown) {
+      return;
+    }
+    _lastOffRouteDialogAt = now;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('⚠️ 路徑偏移警示'),
+        content: Text('偵測到偏離路線約 ${meters.toStringAsFixed(0)} 公尺（門檻 $_offRouteThresholdMeters 公尺）'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('我知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 計算：點到 polyline 的最短距離（公尺）
+  double _minDistanceToPolylineMeters(LatLng p, List<LatLng> line) {
+    if (line.length < 2) return double.infinity;
+
+    double minD = double.infinity;
+    for (int i = 0; i < line.length - 1; i++) {
+      final a = line[i];
+      final b = line[i + 1];
+      final d = _distancePointToSegmentMeters(p, a, b);
+      if (d < minD) minD = d;
+    }
+    return minD;
+  }
+
+  // 點到線段距離（用平面近似投影，足夠做 200m 門檻）
+  double _distancePointToSegmentMeters(LatLng p, LatLng a, LatLng b) {
+    // 轉成「公尺座標」做投影（以 p 的緯度當基準）
+    final latRad = _degToRad(p.latitude);
+    final metersPerDegLat = 111132.92;
+    final metersPerDegLng = 111319.49 * math.cos(latRad);
+
+    double ax = (a.longitude - p.longitude) * metersPerDegLng;
+    double ay = (a.latitude - p.latitude) * metersPerDegLat;
+    double bx = (b.longitude - p.longitude) * metersPerDegLng;
+    double by = (b.latitude - p.latitude) * metersPerDegLat;
+
+    // p 在原點 (0,0)
+    // 求原點到線段 AB 最短距離
+    final abx = bx - ax;
+    final aby = by - ay;
+
+    final apx = -ax;
+    final apy = -ay;
+
+    final abLen2 = abx * abx + aby * aby;
+    if (abLen2 == 0) {
+      return math.sqrt(ax * ax + ay * ay);
+    }
+
+    double t = (apx * abx + apy * aby) / abLen2;
+    t = t.clamp(0.0, 1.0);
+
+    final closestX = ax + abx * t;
+    final closestY = ay + aby * t;
+
+    return math.sqrt(closestX * closestX + closestY * closestY);
+  }
+
+  double _degToRad(double deg) => deg * math.pi / 180.0;
+
+  // =========================
+  // Map 視角工具
+  // =========================
   void _fitBounds(LatLng a, LatLng b) {
     final sw = LatLng(
       (a.latitude < b.latitude) ? a.latitude : b.latitude,
@@ -228,22 +408,19 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
             onMapCreated: (controller) async {
               _mapController = controller;
 
-              // ✅ 保險：地圖 ready 後再對準一次出發地
+              // ✅ 地圖 ready 後對準一次出發地
               await _mapController?.moveCamera(
                 CameraUpdate.newLatLngZoom(_originLatLng!, 15),
               );
-
-              // ✅ 讓兩點都看得到（你想要就留，不想要就刪掉這行）
-              // _fitBounds(_originLatLng!, _destLatLng!);
             },
-            myLocationEnabled: false,
+            myLocationEnabled: true, // ✅ 顯示目前位置（方便測）
             myLocationButtonEnabled: false,
             zoomControlsEnabled: false,
             markers: _markers,
             polylines: _polylines,
           ),
 
-          // （可選）顯示全路線按鈕
+          // ✅ 顯示全路線按鈕
           Positioned(
             top: MediaQuery.of(context).padding.top + 70,
             right: 20,
@@ -256,25 +433,30 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
             ),
           ),
 
-          // 你原本疊上去的 UI
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  '路徑偏移',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          // ✅ 只有偏移才顯示紅條
+          if (_offRoute)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 10,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.92),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '路徑偏移（${_offRouteMeters.toStringAsFixed(0)}m）',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ),
-          ),
+
           Positioned(
             top: MediaQuery.of(context).padding.top + 10,
             right: 20,
@@ -285,6 +467,7 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
               child: const Icon(Icons.sos, color: Colors.white),
             ),
           ),
+
           Positioned(
             bottom: 40,
             left: 20,
