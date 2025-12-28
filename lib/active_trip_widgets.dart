@@ -14,6 +14,9 @@ class ActiveTripBody extends StatefulWidget {
   final VoidCallback onShare;
   final VoidCallback onChat;
 
+  // ✅ 只有建立者或司機可以結束行程
+  final bool isCreator;
+
   // ✅ 只傳 tripId，自己查 trips 表拿 origin/destination
   final String tripId;
 
@@ -24,6 +27,7 @@ class ActiveTripBody extends StatefulWidget {
     required this.onShare,
     required this.onChat,
     required this.tripId,
+    required this.isCreator,
   });
 
   @override
@@ -482,10 +486,16 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
                   foregroundColor: Colors.black,
                   child: const Icon(Icons.share),
                 ),
-                ElevatedButton(
-                  onPressed: widget.onArrived,
-                  child: const Text('已到達'),
-                ),
+                if (widget.isCreator)
+                  ElevatedButton(
+                    onPressed: widget.onArrived,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    ),
+                    child: const Text('已到達', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
                 FloatingActionButton(
                   heroTag: 'btn_chat',
                   onPressed: widget.onChat,

@@ -18,6 +18,44 @@ class ActiveTripPage extends StatefulWidget {
 }
 
 class _ActiveTripPageState extends State<ActiveTripPage> {
+  final supabase = Supabase.instance.client;
+  bool _isCreator = false;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRole();
+  }
+
+  Future<void> _checkRole() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final data = await supabase
+          .from('trip_members')
+          .select('role')
+          .eq('trip_id', widget.tripId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (data != null) {
+        final role = data['role'] as String;
+        if (mounted) {
+          setState(() {
+            _isCreator = (role == 'creator' || role == 'driver');
+            _loading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _loading = false);
+      }
+    } catch (e) {
+      debugPrint('檢查角色失敗: $e');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   // ===============================
   // SOS（原樣）
@@ -99,16 +137,33 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
             child: const Text('取消'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);  // 關閉確認對話框
+            onPressed: () async {
+              Navigator.pop(context); // 關閉確認對話框
 
-              // ✅ 正確：只把 tripId 傳給 RatingPage
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => RatingPage(tripId: widget.tripId),  // ✅ 傳入 tripId
-                ),
-              );
+              try {
+                // ✅ 更新行程狀態
+                await supabase
+                    .from('trips')
+                    .update({'status': 'completed'})
+                    .eq('id', widget.tripId);
+                
+                if (!mounted) return;
+
+                // ✅ 進入評價頁面
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RatingPage(tripId: widget.tripId),
+                  ),
+                );
+              } catch (e) {
+                debugPrint('更新狀態失敗: $e');
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('操作失敗：$e')),
+                  );
+                }
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -139,14 +194,21 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     // ✅ 不再傳固定 origin/destination
     // ✅ ActiveTripBody 會用 tripId 自己去 Supabase trips 表抓 origin/destination
     return ActiveTripBody(
       tripId: widget.tripId,
+      isCreator: _isCreator,
       onSOS: _handleSOS,
       onArrived: _handleArrived,
       onShare: _handleShare,
-      onChat: () {},
+      onChat: _handleChat,
     );
   }
 }
