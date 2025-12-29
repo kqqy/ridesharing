@@ -851,14 +851,26 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                     ),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          backgroundColor: isDriver
-                              ? Colors.blue[100] // ✅ 司機用藍色
-                              : Colors.orange[100],
-                          child: Icon(
-                            isDriver ? Icons.drive_eta : Icons.person,
-                            // ✅ 司機用車子圖示
-                            color: isDriver ? Colors.blue : Colors.orange,
+                        InkWell(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => MemberProfileDialog(
+                                name: request['name'],
+                                rating: request['rating'] as double,
+                                violationCount: request['violation'] as int,
+                              ),
+                            );
+                          },
+                          child: CircleAvatar(
+                            backgroundColor: isDriver
+                                ? Colors.blue[100] // ✅ 司機用藍色
+                                : Colors.orange[100],
+                            child: Icon(
+                              isDriver ? Icons.drive_eta : Icons.person,
+                              // ✅ 司機用車子圖示
+                              color: isDriver ? Colors.blue : Colors.orange,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -959,7 +971,7 @@ class MemberProfileDialog extends StatelessWidget {
     required this.name,
     required this.rating,
     required this.violationCount,
-    required this.noShowCount,
+    this.noShowCount = 0,
   });
 
   @override
