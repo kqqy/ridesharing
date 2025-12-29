@@ -39,6 +39,7 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
 
   String? _originText;
   String? _destText;
+  String? _errorMessage;
 
   LatLng? _originLatLng;
   LatLng? _destLatLng;
@@ -104,12 +105,14 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
       await _startOffRouteMonitoring();
     } on PostgrestException catch (e) {
       if (mounted) {
+        setState(() => _errorMessage = '讀取行程失敗（DB）：${e.message}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('讀取行程失敗（DB）：${e.message}')),
         );
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _errorMessage = '定位失敗，請確認地址正確性。\n錯誤資訊：$e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('讀取行程失敗：$e')),
         );
@@ -388,8 +391,48 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
     }
 
     if (_originLatLng == null || _destLatLng == null) {
-      return const Scaffold(
-        body: Center(child: Text('無法定位出發/終點，請確認 trips 的 origin/destination')),
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 16),
+                const Text(
+                  '無法定位出發地或目的地',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '出發地：${_originText ?? "未設定"}\n目的地：${_destText ?? "未設定"}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  _errorMessage ?? '原因不明（可能是地址無效或網路問題）',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.red),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () {
+                    setState(() => _errorMessage = null);
+                    _loadTripAndBuild();
+                  },
+                  child: const Text('重試'),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('返回'),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
 

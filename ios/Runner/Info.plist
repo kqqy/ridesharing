@@ -45,5 +45,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>此應用程式需要您的位置資訊來顯示地圖導航與追蹤行程進度。</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>此應用程式需要您的位置資訊來顯示地圖導航與追蹤行程進度。</string>
 </dict>
 </plist>
