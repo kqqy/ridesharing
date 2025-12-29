@@ -141,16 +141,26 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
             onPressed: () async {
               Navigator.pop(context); // 關閉確認對話框
 
+              // 顯示 Loading
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) => const Center(child: CircularProgressIndicator()),
+              );
+
               try {
-                // ✅ 更新行程狀態
+                // 更新行程狀態
                 await supabase
                     .from('trips')
                     .update({'status': 'completed'})
                     .eq('id', widget.tripId);
                 
                 if (!mounted) return;
+                Navigator.pop(context); // 關閉 Loading
 
-                // ✅ 進入評價頁面
+                if (!mounted) return;
+
+                // 進入評價頁面
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -160,6 +170,7 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
               } catch (e) {
                 debugPrint('更新狀態失敗: $e');
                 if (mounted) {
+                  Navigator.pop(context); // 關閉 Loading
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('操作失敗：$e')),
                   );

@@ -34,8 +34,8 @@ class Trip {
     );
   }
 
-  /// UI 用顯示字串（你原本的 seats）
-  String get seatsText => '$seatsLeft/$seatsTotal';
+  /// UI 用顯示字串（顯示：已佔用/總座位）
+  String get seatsText => '${seatsTotal - seatsLeft}/$seatsTotal';
 
   /// UI 用顯示時間
   String get timeText =>

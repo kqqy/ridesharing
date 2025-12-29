@@ -136,7 +136,7 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
             'destination': destination,
             'depart_time': departTime.toIso8601String(),
             'seats_total': seatsTotal,
-            'seats_left': seatsTotal,
+            'seats_left': seatsTotal - 1, // 建立者佔 1 位
             'status': 'open',
             'note': note,
           })

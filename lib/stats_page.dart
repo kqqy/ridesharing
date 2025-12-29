@@ -29,25 +29,27 @@ class _StatsPageState extends State<StatsPage> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      // 1. 計算司機行程次數 (狀態為 completed)
+      // 1. 計算司機行程次數
+      // 查詢 trip_members 表，role 為 'driver'
       final driverCount = await supabase
-          .from('trips')
-          .count()
-          .eq('driver_id', userId)
-          .eq('status', 'completed');
+          .from('trip_members')
+          .count(CountOption.exact)
+          .eq('user_id', userId)
+          .eq('role', 'driver');
 
-      // 2. 計算乘客行程次數 (從 trip_members 算)
-      // 這裡簡單計算參與過的行程總數
+      // 2. 計算乘客行程次數
+      // 查詢 trip_members 表，role 為 'passenger' 或 'creator' (建立者也是乘客)
       final passengerCount = await supabase
           .from('trip_members')
-          .count()
-          .eq('user_id', userId);
+          .count(CountOption.exact)
+          .eq('user_id', userId)
+          .or('role.eq.passenger,role.eq.creator');
 
       // 3. 取得評價資料 (計算平均分 + 顯示評論)
-      // 假設 ratings 表有關聯 profiles (透過 from_user)
+      // 修改：關聯 users 表取得 nickname
       final ratingsData = await supabase
           .from('ratings')
-          .select('rating, comment, created_at, profiles:from_user(name)')
+          .select('rating, comment, created_at, users:from_user(nickname)')
           .eq('to_user', userId)
           .order('created_at', ascending: false);
 
@@ -61,7 +63,7 @@ class _StatsPageState extends State<StatsPage> {
           // 只取有留言的顯示在列表，或全部顯示 (這裡取前 10 筆有留言的)
           if (tempReviews.length < 10 && r['comment'] != null && r['comment'].toString().isNotEmpty) {
             tempReviews.add({
-              'name': r['profiles']?['name'] ?? '匿名使用者',
+              'name': r['users']?['nickname'] ?? '匿名使用者',
               'rating': r['rating'],
               'comment': r['comment'],
             });
