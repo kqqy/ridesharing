@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:ridesharing/chat_widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'passenger_widgets.dart';
@@ -9,6 +8,8 @@ import 'upcoming_page.dart';
 import 'upcoming_widgets.dart';
 import 'history_page.dart';
 import 'violation_service.dart';
+
+final supabase = Supabase.instance.client;
 
 class PassengerHome extends StatefulWidget {
   final Color themeColor;
@@ -20,10 +21,15 @@ class PassengerHome extends StatefulWidget {
 }
 
 class _PassengerHomeState extends State<PassengerHome> {
-  bool _showManageMenu = false;
   List<Trip> _exploreTrips = [];
+  bool _loadingExplore = true;
+  bool _showManageMenu = false;  // ✅ 加上這個
 
-  final supabase = Supabase.instance.client;
+  // ✅ 搜尋相關變數
+  final TextEditingController _originController = TextEditingController();
+  final TextEditingController _destinationController = TextEditingController();
+  String _searchOrigin = '';
+  String _searchDestination = '';
 
   @override
   void initState() {
@@ -31,37 +37,105 @@ class _PassengerHomeState extends State<PassengerHome> {
     _loadExploreTrips();
   }
 
-  Future<void> _loadExploreTrips() async {
-    final data = await supabase
-        .from('trips')
-        .select('''
-        *,
-        trip_members(count)
-      ''')
-        .eq('status', 'open')
-        .order('depart_time');
-
-    final trips = (data as List).map((e) {
-      final memberCount = (e['trip_members']?[0]?['count'] ?? 0) as int;
-      final seatsTotal = (e['seats_total'] ?? 0) as int;
-      final seatsLeft = seatsTotal - memberCount;
-
-      return Trip(
-        id: e['id'].toString(),
-        origin: (e['origin'] ?? '') as String,
-        destination: (e['destination'] ?? '') as String,
-        departTime: DateTime.parse(e['depart_time'] as String),
-        seatsTotal: seatsTotal,
-        seatsLeft: seatsLeft,  // ✅ 計算出來的
-        status: (e['status'] ?? '') as String,
-        note: (e['note'] ?? '') as String,
-      );
-    }).toList();
-
-    setState(() {
-      _exploreTrips = trips;
-    });
+  @override
+  void dispose() {
+    _originController.dispose();
+    _destinationController.dispose();
+    super.dispose();
   }
+
+  Future<void> _loadExploreTrips() async {
+    setState(() => _loadingExplore = true);
+
+    try {
+      debugPrint('========================================');
+      debugPrint('🔍 開始載入行程');
+      debugPrint('搜尋條件 - 出發地: "$_searchOrigin", 目的地: "$_searchDestination"');
+
+      // ✅ 改成動態類型
+      dynamic query = supabase
+          .from('trips')
+          .select('''
+          *,
+          trip_members(count)
+        ''')
+          .eq('status', 'open');
+
+      // ✅ 如果有搜尋出發地
+      if (_searchOrigin.isNotEmpty) {
+        query = query.ilike('origin', '%$_searchOrigin%');
+        debugPrint('✅ 篩選出發地包含: $_searchOrigin');
+      }
+
+      // ✅ 如果有搜尋目的地
+      if (_searchDestination.isNotEmpty) {
+        query = query.ilike('destination', '%$_searchDestination%');
+        debugPrint('✅ 篩選目的地包含: $_searchDestination');
+      }
+
+      // ✅ 排序
+      query = query.order('depart_time');
+
+      final data = await query;
+
+      debugPrint('✅ 查詢成功，共 ${data.length} 筆行程');
+
+      final trips = (data as List).map((e) {
+        final seatsTotal = e['seats_total'] ?? 0;
+        final memberCount = (e['trip_members']?[0]?['count'] ?? 0) as int;
+        final seatsLeft = seatsTotal - memberCount;
+
+        return Trip(
+          id: e['id'].toString(),
+          origin: (e['origin'] ?? '') as String,
+          destination: (e['destination'] ?? '') as String,
+          departTime: DateTime.parse(e['depart_time'] as String),
+          seatsTotal: seatsTotal,
+          seatsLeft: seatsLeft,
+          status: (e['status'] ?? '') as String,
+          note: (e['note'] ?? '') as String,
+        );
+      }).toList();
+
+      debugPrint('✅ 解析完成，${trips.length} 筆行程');
+      debugPrint('========================================');
+
+      if (mounted) {
+        setState(() {
+          _exploreTrips = trips;
+        });
+      }
+    } catch (e) {
+      debugPrint('========================================');
+      debugPrint('❌ 載入行程失敗: $e');
+      debugPrint('========================================');
+    } finally {
+      if (mounted) {
+        setState(() => _loadingExplore = false);
+      }
+    }
+  }
+
+  // ✅ 搜尋處理
+  void _handleSearch() {
+    setState(() {
+      _searchOrigin = _originController.text.trim();
+      _searchDestination = _destinationController.text.trim();
+    });
+    _loadExploreTrips();
+  }
+
+  // ✅ 清除搜尋
+  void _handleClearSearch() {
+    setState(() {
+      _originController.clear();
+      _destinationController.clear();
+      _searchOrigin = '';
+      _searchDestination = '';
+    });
+    _loadExploreTrips();
+  }
+
   void _closeMenu() {
     setState(() {
       _showManageMenu = false;
@@ -91,15 +165,15 @@ class _PassengerHomeState extends State<PassengerHome> {
     }
   }
 
-  // ✅ 簡化：直接使用會自動載入成員的 Dialog
   void _handleTripDetail(Trip trip) {
     showDialog(
       context: context,
       builder: (_) => PassengerTripDetailsDialog(
-        trip: trip,  // ✅ 只傳 trip，Dialog 會自己載入成員
+        trip: trip,
       ),
     );
   }
+
   void _handleJoinTrip(Trip trip) async {
     final user = supabase.auth.currentUser;
 
@@ -315,9 +389,15 @@ class _PassengerHomeState extends State<PassengerHome> {
               themeColor: widget.themeColor,
               onManageTripTap: _handleManageTrip,
               exploreTrips: _exploreTrips,
+              loadingExplore: _loadingExplore,  // ✅ 加上這個
               onExploreDetail: _handleTripDetail,
               onExploreJoin: _handleJoinTrip,
               onCreateTrip: _handleCreateTrip,
+              // ✅ 搜尋相關參數
+              originController: _originController,
+              destinationController: _destinationController,
+              onSearch: _handleSearch,
+              onClearSearch: _handleClearSearch,
             ),
           ),
           if (_showManageMenu)
@@ -325,10 +405,8 @@ class _PassengerHomeState extends State<PassengerHome> {
               top: appBarHeight + 10,
               right: 15,
               child: PassengerTripMenu(
-                onUpcomingTap: () =>
-                    _handleMenuSelection('即將出發行程'),
-                onHistoryTap: () =>
-                    _handleMenuSelection('歷史行程與統計'),
+                onUpcomingTap: () => _handleMenuSelection('即將出發行程'),
+                onHistoryTap: () => _handleMenuSelection('歷史行程與統計'),
               ),
             ),
         ],

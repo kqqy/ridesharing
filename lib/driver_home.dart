@@ -22,11 +22,15 @@ class DriverHome extends StatefulWidget {
 
 class _DriverHomeState extends State<DriverHome> {
   bool _showManageMenu = false;
-
   Trip? _currentActiveTrip;
-
   List<Trip> _exploreTrips = [];
   bool _loadingExplore = true;
+
+  // ✅ 搜尋相關變數
+  final TextEditingController _originController = TextEditingController();
+  final TextEditingController _destinationController = TextEditingController();
+  String _searchOrigin = '';
+  String _searchDestination = '';
 
   @override
   void initState() {
@@ -34,23 +38,47 @@ class _DriverHomeState extends State<DriverHome> {
     _fetchExploreTrips();
   }
 
+  @override
+  void dispose() {
+    _originController.dispose();
+    _destinationController.dispose();
+    super.dispose();
+  }
+
   // ===============================
   // 從 Supabase 撈 Explore（open 行程）
   // ===============================
   Future<void> _fetchExploreTrips() async {
+    setState(() => _loadingExplore = true);
+
     try {
       debugPrint('========================================');
-      debugPrint('🔍 開始載入探索行程（司機端）');
+      debugPrint('🔍 司機端：開始載入行程');
+      debugPrint('搜尋條件 - 出發地: "$_searchOrigin", 目的地: "$_searchDestination"');
 
-      // ✅ 直接用 trips 表 + 計算座位
-      final data = await supabase
+      dynamic query = supabase
           .from('trips')
           .select('''
-          *,
-          trip_members(count)
-        ''')
-          .eq('status', 'open')
-          .order('depart_time');
+            *,
+            trip_members(count)
+          ''')
+          .eq('status', 'open');
+
+      // ✅ 如果有搜尋出發地
+      if (_searchOrigin.isNotEmpty) {
+        query = query.ilike('origin', '%$_searchOrigin%');
+        debugPrint('✅ 篩選出發地包含: $_searchOrigin');
+      }
+
+      // ✅ 如果有搜尋目的地
+      if (_searchDestination.isNotEmpty) {
+        query = query.ilike('destination', '%$_searchDestination%');
+        debugPrint('✅ 篩選目的地包含: $_searchDestination');
+      }
+
+      query = query.order('depart_time');
+
+      final data = await query;
 
       debugPrint('✅ 查詢成功，共 ${data.length} 筆行程');
 
@@ -65,7 +93,7 @@ class _DriverHomeState extends State<DriverHome> {
           destination: e['destination'] ?? '',
           departTime: DateTime.parse(e['depart_time']),
           seatsTotal: seatsTotal,
-          seatsLeft: seatsLeft,  // ✅ 計算出來的
+          seatsLeft: seatsLeft,
           status: e['status'] ?? '',
           note: e['note'] ?? '',
         );
@@ -77,18 +105,35 @@ class _DriverHomeState extends State<DriverHome> {
       if (!mounted) return;
       setState(() {
         _exploreTrips = trips;
-        _loadingExplore = false;
       });
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('========================================');
-      debugPrint('❌ 載入行程失敗');
-      debugPrint('錯誤: $e');
-      debugPrint('Stack trace: $stackTrace');
+      debugPrint('❌ 載入行程失敗: $e');
       debugPrint('========================================');
-
+    } finally {
       if (!mounted) return;
       setState(() => _loadingExplore = false);
     }
+  }
+
+  // ✅ 搜尋處理
+  void _handleSearch() {
+    setState(() {
+      _searchOrigin = _originController.text.trim();
+      _searchDestination = _destinationController.text.trim();
+    });
+    _fetchExploreTrips();
+  }
+
+  // ✅ 清除搜尋
+  void _handleClearSearch() {
+    setState(() {
+      _originController.clear();
+      _destinationController.clear();
+      _searchOrigin = '';
+      _searchDestination = '';
+    });
+    _fetchExploreTrips();
   }
 
   void _closeAllDialogs() {
@@ -291,12 +336,11 @@ class _DriverHomeState extends State<DriverHome> {
     }
   }
 
-  // ✅ 簡化：直接使用會自動載入成員的 Dialog
   void _handleExploreDetail(Trip trip) {
     showDialog(
       context: context,
       builder: (context) => PassengerTripDetailsDialog(
-        trip: trip,  // ✅ 只傳 trip，Dialog 會自己載入成員
+        trip: trip,
       ),
     );
   }
@@ -325,6 +369,7 @@ class _DriverHomeState extends State<DriverHome> {
       builder: (context) => const SOSCountdownDialog(),
     );
   }
+
   void _handleArrived() {
     showDialog(
       context: context,
@@ -375,16 +420,21 @@ class _DriverHomeState extends State<DriverHome> {
       currentActiveTrip: _currentActiveTrip,
       isManageMenuVisible: _showManageMenu,
       exploreTrips: _exploreTrips,
+      loadingExplore: _loadingExplore,  // ✅ 加上這個
       onJoinTrip: _handleJoinTrip,
       onExploreDetail: _handleExploreDetail,
-      onManageTap: () =>
-          setState(() => _showManageMenu = !_showManageMenu),
+      onManageTap: () => setState(() => _showManageMenu = !_showManageMenu),
       onMenuClose: _closeAllDialogs,
       onMenuSelect: _handleMenuSelection,
       onSOS: _handleSOS,
       onArrived: _handleArrived,
       onShare: () {},
       onChat: _handleChat,
+      // ✅ 搜尋相關參數
+      originController: _originController,
+      destinationController: _destinationController,
+      onSearch: _handleSearch,
+      onClearSearch: _handleClearSearch,
     );
   }
 }

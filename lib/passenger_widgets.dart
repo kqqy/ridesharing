@@ -8,28 +8,40 @@ class PassengerHomeBody extends StatelessWidget {
   final Color themeColor;
   final VoidCallback onManageTripTap;
   final List<Trip> exploreTrips;
+  final bool loadingExplore;
   final Function(Trip) onExploreDetail;
   final Function(Trip) onExploreJoin;
   final VoidCallback onCreateTrip;
+
+  // ✅ 搜尋相關參數
+  final TextEditingController originController;
+  final TextEditingController destinationController;
+  final VoidCallback onSearch;
+  final VoidCallback onClearSearch;
 
   const PassengerHomeBody({
     super.key,
     required this.themeColor,
     required this.onManageTripTap,
     required this.exploreTrips,
+    required this.loadingExplore,
     required this.onExploreDetail,
     required this.onExploreJoin,
     required this.onCreateTrip,
+    required this.originController,
+    required this.destinationController,
+    required this.onSearch,
+    required this.onClearSearch,
   });
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // 上方區塊 (雙搜尋框)
+        // 上方區塊 (搜尋區)
         Container(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-          color: const Color(0xFFF5F5F5), // 淺灰背景
+          color: const Color(0xFFF5F5F5),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -40,78 +52,132 @@ class PassengerHomeBody extends StatelessWidget {
                 children: [
                   const Text(
                     '探索行程',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF424242)),
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF424242),
+                    ),
                   ),
                   ElevatedButton.icon(
                     onPressed: onManageTripTap,
                     icon: const Icon(Icons.edit_calendar, size: 16, color: Colors.black54),
                     label: const Text(
-                      '行程管理', 
-                      style: TextStyle(color: Colors.black54, fontWeight: FontWeight.bold, fontSize: 13)
+                      '行程管理',
+                      style: TextStyle(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
                       elevation: 1,
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 15),
 
-              // 雙搜尋框
+              // ✅ 搜尋框（改成可輸入）
               Row(
                 children: [
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(30),
                         boxShadow: [
-                          BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2)),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.my_location, size: 18, color: Colors.blue[300]),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '出發地',
-                              style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
                         ],
+                      ),
+                      child: TextField(
+                        controller: originController,
+                        decoration: InputDecoration(
+                          hintText: '出發地',
+                          hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          prefixIcon: Icon(Icons.my_location, size: 18, color: Colors.blue[300]),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        onSubmitted: (_) => onSearch(),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(30),
                         boxShadow: [
-                          BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2)),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.flag, size: 18, color: Colors.red[300]),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              '目的地',
-                              style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                          BoxShadow(
+                            color: Colors.grey.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
                           ),
                         ],
+                      ),
+                      child: TextField(
+                        controller: destinationController,
+                        decoration: InputDecoration(
+                          hintText: '目的地',
+                          hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
+                          prefixIcon: Icon(Icons.flag, size: 18, color: Colors.red[300]),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
+                        onSubmitted: (_) => onSearch(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              // ✅ 搜尋和清除按鈕
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  // 清除按鈕
+                  TextButton.icon(
+                    onPressed: onClearSearch,
+                    icon: const Icon(Icons.clear, size: 16),
+                    label: const Text('清除', style: TextStyle(fontSize: 13)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.grey[700],
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      minimumSize: const Size(0, 28),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // 搜尋按鈕
+                  ElevatedButton.icon(
+                    onPressed: onSearch,
+                    icon: const Icon(Icons.search, size: 16),
+                    label: const Text('搜尋', style: TextStyle(fontSize: 13)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      minimumSize: const Size(0, 32),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
                       ),
                     ),
                   ),
@@ -124,8 +190,20 @@ class PassengerHomeBody extends StatelessWidget {
         // 下方列表區塊
         Expanded(
           child: Container(
-            color: const Color(0xFFF5F5F5), 
-            child: ListView.builder(
+            color: const Color(0xFFF5F5F5),
+            child: loadingExplore
+                ? const Center(child: CircularProgressIndicator())
+                : exploreTrips.isEmpty
+                ? const Center(
+              child: Text(
+                '沒有找到符合的行程',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 16,
+                ),
+              ),
+            )
+                : ListView.builder(
               padding: const EdgeInsets.all(20),
               itemCount: exploreTrips.length,
               itemBuilder: (context, index) {
@@ -152,12 +230,12 @@ class PassengerHomeBody extends StatelessWidget {
 class PassengerTripCard extends StatelessWidget {
   final Trip trip;
   final VoidCallback onDetailTap;
-  final VoidCallback? onJoin;   
-  final VoidCallback? onChat;   
-  final VoidCallback? onDepart; 
-  final VoidCallback? onCancel; 
-  final String? cancelText;     
-  final bool hasNotification; // 控制紅點
+  final VoidCallback? onJoin;
+  final VoidCallback? onChat;
+  final VoidCallback? onDepart;
+  final VoidCallback? onCancel;
+  final String? cancelText;
+  final bool hasNotification;
 
   const PassengerTripCard({
     super.key,
@@ -175,9 +253,9 @@ class PassengerTripCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      elevation: 2, 
+      elevation: 2,
       color: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), 
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -200,18 +278,18 @@ class PassengerTripCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                
+
                 // 三個點點 + 紅點通知
                 SizedBox(
-                  width: 30, 
-                  height: 30, 
+                  width: 30,
+                  height: 30,
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
                       IconButton(
                         padding: EdgeInsets.zero,
                         constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.more_vert, color: Colors.grey), // 固定灰色
+                        icon: const Icon(Icons.more_vert, color: Colors.grey),
                         onPressed: onDetailTap,
                       ),
                       if (hasNotification)
@@ -234,7 +312,7 @@ class PassengerTripCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
-            
+
             // 下半部：按鈕區
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -242,19 +320,21 @@ class PassengerTripCard extends StatelessWidget {
                 if (onChat != null) ...[
                   OutlinedButton.icon(
                     onPressed: onChat,
-                    icon: const Icon(Icons.chat_bubble_outline, size: 16), 
+                    icon: const Icon(Icons.chat_bubble_outline, size: 16),
                     label: const Text('聊天室', style: TextStyle(fontSize: 13)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.blue,
                       side: const BorderSide(color: Colors.blue),
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 8),
                 ],
-                
+
                 if (onDepart != null) ...[
                   OutlinedButton(
                     onPressed: onDepart,
@@ -263,7 +343,9 @@ class PassengerTripCard extends StatelessWidget {
                       side: const BorderSide(color: Colors.green),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
                     child: const Text('出發', style: TextStyle(fontSize: 13)),
                   ),
@@ -278,9 +360,14 @@ class PassengerTripCard extends StatelessWidget {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    child: const Text('我要共乘', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                    child: const Text(
+                      '我要共乘',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
                   ),
 
                 if (onCancel != null)
@@ -291,9 +378,14 @@ class PassengerTripCard extends StatelessWidget {
                       side: const BorderSide(color: Colors.red),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       minimumSize: const Size(0, 32),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
                     ),
-                    child: Text(cancelText ?? '取消行程', style: const TextStyle(fontSize: 13)),
+                    child: Text(
+                      cancelText ?? '取消行程',
+                      style: const TextStyle(fontSize: 13),
+                    ),
                   ),
               ],
             ),
@@ -306,7 +398,7 @@ class PassengerTripCard extends StatelessWidget {
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, color: Colors.grey[600], size: 16), // 統一灰色
+        Icon(icon, color: Colors.grey[600], size: 16),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
