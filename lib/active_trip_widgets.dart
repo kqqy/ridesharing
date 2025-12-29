@@ -282,10 +282,25 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
     final url = _buildGoogleMapsDirectionsUrl();
     final msg = '我的行程路線（點開可直接用 Google Maps 導航）：\n$url';
 
+    debugPrint('準備分享連結: $url');
+
     try {
-      await Share.share(msg);
-      widget.onShare(); // 你要做 log 的話保留
+      // ✅ 取得螢幕中間位置，作為分享視窗的彈出點（防止 iPad 崩潰，對 iPhone 也是安全設定）
+      final box = context.findRenderObject() as RenderBox?;
+      Rect? shareOrigin;
+      if (box != null) {
+        shareOrigin = box.localToGlobal(Offset.zero) & box.size;
+      }
+
+      // ✅ 加上 subject 讓郵件分享更完整
+      await Share.share(
+        msg, 
+        subject: '我的行程路線',
+        sharePositionOrigin: shareOrigin, // ✅ 關鍵修正
+      );
+      widget.onShare(); 
     } catch (e) {
+      debugPrint('分享發生錯誤: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('分享失敗：$e')),
