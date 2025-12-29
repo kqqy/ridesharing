@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -123,11 +125,49 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
   }
 
   Future<void> _geocodeEndpoints(String originText, String destText) async {
-    final originLoc = await locationFromAddress(originText);
-    final destLoc = await locationFromAddress(destText);
+    try {
+      // 1. 嘗試原生 Geocoding (Android: Google, iOS: Apple)
+      final originLoc = await locationFromAddress(originText);
+      final destLoc = await locationFromAddress(destText);
 
-    _originLatLng = LatLng(originLoc.first.latitude, originLoc.first.longitude);
-    _destLatLng = LatLng(destLoc.first.latitude, destLoc.first.longitude);
+      _originLatLng = LatLng(originLoc.first.latitude, originLoc.first.longitude);
+      _destLatLng = LatLng(destLoc.first.latitude, destLoc.first.longitude);
+
+    } catch (e) {
+      debugPrint('原生 Geocoding 失敗 ($e)，嘗試使用 Google API...');
+
+      // 2. 備案：如果失敗，強制使用 Google Geocoding API
+      try {
+        final origin = await _fetchGoogleGeocoding(originText);
+        final dest = await _fetchGoogleGeocoding(destText);
+
+        if (origin != null && dest != null) {
+          _originLatLng = origin;
+          _destLatLng = dest;
+          return; // 成功
+        }
+      } catch (googleError) {
+        debugPrint('Google Geocoding API 也失敗: $googleError');
+      }
+
+      // 如果兩者都失敗，拋出原始錯誤供 UI 顯示
+      rethrow;
+    }
+  }
+
+  Future<LatLng?> _fetchGoogleGeocoding(String address) async {
+    final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$_googleApiKey');
+    
+    final response = await http.get(url);
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+        final location = data['results'][0]['geometry']['location'];
+        return LatLng(location['lat'], location['lng']);
+      }
+    }
+    return null;
   }
 
   void _buildMarkers() {
