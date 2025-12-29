@@ -13,7 +13,7 @@ final supabase = Supabase.instance.client;
 // ==========================================
 // 1️⃣ UpcomingBody
 // ==========================================
-class UpcomingBody extends StatelessWidget {
+class UpcomingBody extends StatefulWidget {
   final bool isDriver;
   final List<Trip> upcomingTrips;
   final Map<String, String> roleMap;
@@ -34,30 +34,95 @@ class UpcomingBody extends StatelessWidget {
   });
 
   @override
+  State<UpcomingBody> createState() => _UpcomingBodyState();
+}
+
+class _UpcomingBodyState extends State<UpcomingBody> {
+  /// tripId -> 是否有加入申請
+  final Map<String, bool> _hasJoinRequests = {};
+  bool _loadingReq = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadJoinRequestFlags();
+  }
+
+  @override
+  void didUpdateWidget(covariant UpcomingBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // 如果行程清單變了，就重新查
+    if (oldWidget.upcomingTrips != widget.upcomingTrips) {
+      _loadJoinRequestFlags();
+    }
+  }
+
+  Future<void> _loadJoinRequestFlags() async {
+    if (widget.upcomingTrips.isEmpty) return;
+
+    setState(() => _loadingReq = true);
+
+    try {
+      final tripIds = widget.upcomingTrips.map((t) => t.id).toList();
+
+      // ✅ 一次查出這些 trip_id 有哪些出現在 join_requests
+      final rows = await supabase
+          .from('join_requests')
+          .select('trip_id')
+          .inFilter('trip_id', tripIds);
+
+      final idsWithReq = <String>{};
+      for (final r in rows) {
+        final id = (r['trip_id'] ?? '').toString();
+        if (id.isNotEmpty) idsWithReq.add(id);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _hasJoinRequests
+          ..clear()
+          ..addEntries(tripIds.map((id) => MapEntry(id, idsWithReq.contains(id))));
+        _loadingReq = false;
+      });
+    } catch (e) {
+      debugPrint('load join_requests flags failed: $e');
+      if (!mounted) return;
+      setState(() => _loadingReq = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (upcomingTrips.isEmpty) {
+    if (widget.upcomingTrips.isEmpty) {
       return _empty();
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(20),
-      itemCount: upcomingTrips.length,
+      itemCount: widget.upcomingTrips.length,
       itemBuilder: (context, index) {
-        final trip = upcomingTrips[index];
-        final role = roleMap[trip.id] ?? 'passenger';
+        final trip = widget.upcomingTrips[index];
+        final role = widget.roleMap[trip.id] ?? 'passenger';
         final isCreator = role == 'creator';
+
+        // ✅ 只有「有加入申請」才顯示紅點（而且通常只對創建者有意義）
+        final hasRedDot = isCreator && (_hasJoinRequests[trip.id] == true);
 
         final card = PassengerTripCard(
           trip: trip,
-          onDetailTap: () => onDetailTap(trip),
+          onDetailTap: () => widget.onDetailTap(trip),
           onJoin: null,
-          onChat: () => onChatTrip(trip),
+          onChat: () => widget.onChatTrip(trip),
           cancelText: isCreator ? '取消行程' : '離開',
-          onDepart: isCreator ? () => onDepartTrip?.call(trip) : null,
-          onCancel: () => onCancelTrip(trip),
-          hasNotification: isCreator,
+          onDepart: isCreator ? () => widget.onDepartTrip?.call(trip) : null,
+          onCancel: () => widget.onCancelTrip(trip),
+
+          // ✅ 只在有加入申請時顯示紅點
+          hasNotification: hasRedDot,
         );
 
+        // 你原本那行「此行程由您創建」是否要留？可以留，不影響紅點
         if (!isCreator) return card;
 
         return Stack(
@@ -75,6 +140,18 @@ class UpcomingBody extends StatelessWidget {
                 ),
               ),
             ),
+
+            // （可選）如果你想在查詢中顯示一個小 loading 點提示
+            if (_loadingReq)
+              const Positioned(
+                right: 10,
+                top: 10,
+                child: SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
           ],
         );
       },
@@ -95,6 +172,7 @@ class UpcomingBody extends StatelessWidget {
         ),
       );
 }
+
 
 // ==========================================
 // ✅ 2️⃣ MiniRouteMap（真的 GoogleMap，但禁止滑動/縮放）
