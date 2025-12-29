@@ -40,12 +40,13 @@ class _MemberListPageState extends State<MemberListPage> {
         debugPrint('角色: $role');
 
         // 1️⃣ 查詢違規次數
-        final violationsData = await supabase
-            .from('violations')
-            .select('id')
-            .eq('user_id', userId);
+        final suspensionData = await supabase
+            .from('suspensions')
+            .select('violation_count')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-        final violationCount = violationsData.length;
+        final violationCount = (suspensionData?['violation_count'] as int?) ?? 0;
 
         // 2️⃣ 查詢評價
         final ratingsData = await supabase
