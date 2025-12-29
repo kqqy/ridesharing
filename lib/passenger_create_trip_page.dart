@@ -115,8 +115,7 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
     final String creatorId = user.id;
 
     try {
-      // ✅ 2) 保險：先確保 public.users 有這個人（避免 trips 外鍵炸掉）
-      // 依你的表結構：users 有 nickname / email / phone（phone 若沒有就不寫）
+      // ✅ 2) 保險：先確保 public.users 有這個人
       final String fallbackNickname =
       (user.email?.split('@').first ?? 'user').trim();
 
@@ -124,43 +123,51 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
         'id': creatorId,
         if (user.email != null) 'email': user.email,
         'nickname': fallbackNickname,
-        // phone 你如果要寫，這裡需要你有 phone 來源（通常註冊時存）
       });
 
       // ✅ 3) 寫入 trips
       final inserted = await supabase
           .from('trips')
           .insert({
-            'creator_id': creatorId,
-            'origin': origin,
-            'destination': destination,
-            'depart_time': departTime.toIso8601String(),
-            'seats_total': seatsTotal,
-            'seats_left': seatsTotal - 1, // 建立者佔 1 位
-            'status': 'open',
-            'note': note,
-          })
+        'creator_id': creatorId,
+        'origin': origin,
+        'destination': destination,
+        'depart_time': departTime.toIso8601String(),
+        'seats_total': seatsTotal,
+        'seats_left': seatsTotal - 1, // 建立者佔 1 位
+        'status': 'open',
+        'note': note,
+      })
           .select('id')
           .single();
 
       final String tripId = inserted['id'] as String;
-      // ✅ 4) 把創建者也加入 trip_members，role 設為 creator
+
+      // ✅ 4) 建立聊天室記錄
+      await supabase.from('chat_rooms').insert({
+        'id': tripId,      // room_id = trip_id
+        'trip_id': tripId,
+      });
+
+      debugPrint('✅ 已建立聊天室: $tripId');
+
+      // ✅ 5) 把創建者也加入 trip_members，role 設為 creator
       await supabase.from('trip_members').insert({
         'trip_id': tripId,
         'user_id': creatorId,
-        'role': 'creator',  // ✅✅✅ 改成 creator
+        'role': 'creator',
         'join_time': DateTime.now().toIso8601String(),
       });
 
-
       if (!mounted) return;
-      Navigator.pop(context, tripId); // ✅ 回傳 tripId 給上一頁
+      Navigator.pop(context, tripId);
     } on PostgrestException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('建立行程失敗（DB）：${e.message}')),
         );
       }
+
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

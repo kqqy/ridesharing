@@ -43,7 +43,14 @@ class _UpcomingPageState extends State<UpcomingPage> {
     try {
       final data = await supabase
           .from('trip_members')
-          .select('trip_id, role, trips!inner(*)')
+          .select('''
+          trip_id, 
+          role, 
+          trips!inner(
+            *,
+            trip_members(count)
+          )
+        ''')
           .eq('user_id', user.id);
 
       final trips = <Trip>[];
@@ -58,14 +65,19 @@ class _UpcomingPageState extends State<UpcomingPage> {
         final id = trip['id'].toString();
         roleMap[id] = row['role'] as String;
 
+        // ✅ 計算座位
+        final memberCount = (trip['trip_members']?[0]?['count'] ?? 0) as int;
+        final seatsTotal = (trip['seats_total'] ?? 0) as int;
+        final seatsLeft = seatsTotal - memberCount;
+
         trips.add(
           Trip(
             id: id,
             origin: (trip['origin'] ?? '') as String,
             destination: (trip['destination'] ?? '') as String,
             departTime: DateTime.parse(trip['depart_time'] as String),
-            seatsTotal: (trip['seats_total'] ?? 0) as int,
-            seatsLeft: (trip['seats_left'] ?? 0) as int,
+            seatsTotal: seatsTotal,
+            seatsLeft: seatsLeft,  // ✅ 計算出來的
             status: status,
             note: (trip['note'] ?? '') as String,
           ),

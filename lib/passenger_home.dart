@@ -34,19 +34,34 @@ class _PassengerHomeState extends State<PassengerHome> {
   Future<void> _loadExploreTrips() async {
     final data = await supabase
         .from('trips')
-        .select()
+        .select('''
+        *,
+        trip_members(count)
+      ''')
         .eq('status', 'open')
         .order('depart_time');
 
-    final trips = (data as List)
-        .map((e) => Trip.fromMap(e))
-        .toList();
+    final trips = (data as List).map((e) {
+      final memberCount = (e['trip_members']?[0]?['count'] ?? 0) as int;
+      final seatsTotal = (e['seats_total'] ?? 0) as int;
+      final seatsLeft = seatsTotal - memberCount;
+
+      return Trip(
+        id: e['id'].toString(),
+        origin: (e['origin'] ?? '') as String,
+        destination: (e['destination'] ?? '') as String,
+        departTime: DateTime.parse(e['depart_time'] as String),
+        seatsTotal: seatsTotal,
+        seatsLeft: seatsLeft,  // ✅ 計算出來的
+        status: (e['status'] ?? '') as String,
+        note: (e['note'] ?? '') as String,
+      );
+    }).toList();
 
     setState(() {
       _exploreTrips = trips;
     });
   }
-
   void _closeMenu() {
     setState(() {
       _showManageMenu = false;
@@ -85,7 +100,6 @@ class _PassengerHomeState extends State<PassengerHome> {
       ),
     );
   }
-
   void _handleJoinTrip(Trip trip) async {
     final user = supabase.auth.currentUser;
 
@@ -93,6 +107,19 @@ class _PassengerHomeState extends State<PassengerHome> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('請先登入')),
       );
+      return;
+    }
+
+    // ✅ 0️⃣ 檢查座位是否已滿
+    if (trip.seatsLeft <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('行程已滿員'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
       return;
     }
 
@@ -131,7 +158,66 @@ class _PassengerHomeState extends State<PassengerHome> {
         return;
       }
 
-      // 2️⃣ 檢查是否已經發送過申請
+      // 2️⃣ ✅ 再次確認座位（避免競態條件）
+      final tripData = await supabase
+          .from('trips')
+          .select('creator_id, seats_total, trip_members(count)')
+          .eq('id', trip.id)
+          .single();
+
+      final seatsTotal = tripData['seats_total'] as int;
+      final memberCount = (tripData['trip_members']?[0]?['count'] ?? 0) as int;
+      final seatsLeft = seatsTotal - memberCount;
+
+      if (seatsLeft <= 0) {
+        debugPrint('⚠️ 行程已滿員');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('行程已滿員'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 3️⃣ 查詢創建者是否開啟自動審核
+      final creatorId = tripData['creator_id'] as String;
+
+      final creatorData = await supabase
+          .from('users')
+          .select('auto_approve')
+          .eq('id', creatorId)
+          .single();
+
+      final autoApprove = creatorData['auto_approve'] as bool? ?? false;
+
+      debugPrint('創建者自動審核狀態: $autoApprove');
+
+      if (autoApprove) {
+        // ✅ 自動審核：直接加入 trip_members
+        debugPrint('✅ 自動審核開啟，直接加入行程');
+
+        await supabase.from('trip_members').insert({
+          'trip_id': trip.id,
+          'user_id': user.id,
+          'role': 'passenger',
+          'join_time': DateTime.now().toIso8601String(),
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已成功加入行程！'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 4️⃣ 需要審核：檢查是否已經發送過申請
       final existRequest = await supabase
           .from('join_requests')
           .select('trip_id')
@@ -149,16 +235,16 @@ class _PassengerHomeState extends State<PassengerHome> {
         return;
       }
 
-      // 3️⃣ 發送加入申請
+      // 5️⃣ 發送加入申請
       debugPrint('✅ 寫入 join_requests...');
       await supabase.from('join_requests').insert({
         'trip_id': trip.id,
         'user_id': user.id,
+        'role': 'passenger',
       });
 
       debugPrint('✅ 成功發送加入申請');
 
-      // 4️⃣ 成功提示
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

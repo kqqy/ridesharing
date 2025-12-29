@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
-import 'auth_page.dart'; 
-import 'setting_widgets.dart'; // 引入 UI
-import 'violation_service.dart'; // [新增] 引入違規服務
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'auth_page.dart';
+import 'setting_widgets.dart';
+import 'violation_service.dart';
 
 // ==========================================
 //  1. 設定列表頁面 (主入口)
@@ -17,13 +17,19 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final supabase = Supabase.instance.client;
-  bool _isAutoApprove = false; 
+  bool _isAutoApprove = false;
   final TextEditingController _nameController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadProfile() async {
@@ -33,13 +39,14 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final data = await supabase
           .from('users')
-          .select('nickname')
+          .select('nickname, auto_approve')
           .eq('id', user.id)
           .single();
-      
+
       if (mounted) {
         setState(() {
           _nameController.text = data['nickname'] ?? '';
+          _isAutoApprove = data['auto_approve'] ?? false;
         });
       }
     } catch (e) {
@@ -56,14 +63,43 @@ class _SettingsPageState extends State<SettingsPage> {
           .from('users')
           .update({'nickname': newName.trim()})
           .eq('id', user.id);
-      
+
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('姓名更新成功')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('姓名更新成功')),
+        );
       }
     } catch (e) {
       debugPrint('Save name error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('儲存失敗: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('儲存失敗: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _saveAutoApprove(bool value) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await supabase
+          .from('users')
+          .update({'auto_approve': value})
+          .eq('id', user.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(value ? '已開啟自動審核' : '已關閉自動審核')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Save auto_approve error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('儲存失敗: $e')),
+        );
       }
     }
   }
@@ -76,17 +112,17 @@ class _SettingsPageState extends State<SettingsPage> {
         setState(() {
           _isAutoApprove = value;
         });
+        _saveAutoApprove(value);
       },
       nameController: _nameController,
-      onNameSubmitted: _saveName, 
-
+      onNameSubmitted: _saveName,
       onLogout: () async {
         await supabase.auth.signOut();
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (context) => const AuthPage()),
-          (route) => false,
+              (route) => false,
         );
       },
       onEditPreferences: () {
@@ -125,11 +161,8 @@ class EditPreferencesPage extends StatefulWidget {
 class _EditPreferencesPageState extends State<EditPreferencesPage> {
   final supabase = Supabase.instance.client;
 
-  // 1. 個性選項
   final List<String> personalityList = ['社恐', 'I人', '普通', 'E人', '社牛'];
-  // 2. 興趣選項
   final List<String> interestOptions = ['運動', '聽音樂', '手工藝', '攝影', '繪畫', '寫程式'];
-  // 3. 氣氛選項
   final List<String> vibeOptions = ['安靜', '普通', '愛聊天'];
 
   String? selectedPersonality;
@@ -183,13 +216,17 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
       }).eq('id', user.id);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('個人偏好已更新')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('個人偏好已更新')),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
       debugPrint('Update preferences error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失敗: $e')),
+        );
       }
     }
   }
@@ -224,7 +261,7 @@ class _EditPreferencesPageState extends State<EditPreferencesPage> {
 }
 
 // ==========================================
-//  3. 違規狀態頁面 (修改為 Stateful 以讀取資料)
+//  3. 違規狀態頁面
 // ==========================================
 
 class ViolationStatusPage extends StatefulWidget {
@@ -279,8 +316,8 @@ class _ViolationStatusPageState extends State<ViolationStatusPage> {
     }
 
     return ViolationStatusBody(
-      violationCount: violationCount, 
-      status: status
+        violationCount: violationCount,
+        status: status
     );
   }
 }
@@ -298,7 +335,7 @@ class EditCarInfoPage extends StatefulWidget {
 
 class _EditCarInfoPageState extends State<EditCarInfoPage> {
   final supabase = Supabase.instance.client;
-  final TextEditingController _carModelController = TextEditingController(); 
+  final TextEditingController _carModelController = TextEditingController();
   final TextEditingController _licensePlateController = TextEditingController();
   bool isLoading = true;
 
@@ -306,6 +343,13 @@ class _EditCarInfoPageState extends State<EditCarInfoPage> {
   void initState() {
     super.initState();
     _loadCarInfo();
+  }
+
+  @override
+  void dispose() {
+    _carModelController.dispose();
+    _licensePlateController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCarInfo() async {
@@ -345,13 +389,17 @@ class _EditCarInfoPageState extends State<EditCarInfoPage> {
       }, onConflict: 'user_id');
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('車輛資訊已更新')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('車輛資訊已更新')),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
       debugPrint('Update car info error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失敗: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新失敗: $e')),
+        );
       }
     }
   }

@@ -36,7 +36,7 @@ class _HistoryPageState extends State<HistoryPage> {
     setState(() => _loading = true);
 
     try {
-      // ✅ 先取得所有參與的行程
+      // 1️⃣ 先取得所有參與的行程
       final data = await supabase
           .from('trip_members')
           .select('role, join_time, trips!inner(*)')
@@ -44,32 +44,58 @@ class _HistoryPageState extends State<HistoryPage> {
 
       debugPrint('📊 查詢到該用戶參與的所有行程: ${data.length}');
 
-      // ✅ 列出每個行程的狀態
-      for (var p in data) {
-        final tripData = p['trips'] as Map<String, dynamic>;
-        debugPrint('  - 出發地: ${tripData['origin']}, 目的地: ${tripData['destination']}, 狀態: ${tripData['status']}');
-      }
-
-      // ✅ 過濾出已完成、已取消、已結束的
+      // 2️⃣ 過濾出已完成、已取消、已結束的
       final filteredData = data.where((p) {
         final tripData = p['trips'] as Map<String, dynamic>;
         final status = tripData['status'] as String;
-
-        final isHistory = status == 'completed' || status == 'canceled' || status == 'finished';
-
-        if (isHistory) {
-          debugPrint('  ✅ 符合歷史條件: $status (${tripData['origin']} → ${tripData['destination']})');
-        }
-
-        return isHistory;
+        return status == 'completed' || status == 'canceled' || status == 'finished';
       }).toList();
 
       debugPrint('📊 過濾後的歷史行程數量: ${filteredData.length}');
-      debugPrint('========================================');
 
-      final history = filteredData.map((p) {
+      // 3️⃣ 為每個行程載入所有成員
+      final history = <Map<String, dynamic>>[];
+
+      for (var p in filteredData) {
         final tripData = p['trips'] as Map<String, dynamic>;
+        final tripId = tripData['id'] as String;
 
+        // ✅ 載入這個行程的所有成員
+        final allMembers = await supabase
+            .from('trip_members')
+            .select('''
+            user_id,
+            role,
+            users!trip_members_user_id_fkey(
+              nickname
+            )
+          ''')
+            .eq('trip_id', tripId);
+
+        // ✅ 組合成員列表
+        final membersList = <String>[];
+        for (var member in allMembers) {
+          final memberId = member['user_id'] as String;
+          final memberRole = member['role'] as String;
+          final nickname = member['users']['nickname'] ?? '未知';
+
+          String displayRole;
+          if (memberRole == 'creator') {
+            displayRole = '創建者';
+          } else if (memberRole == 'driver') {
+            displayRole = '司機';
+          } else {
+            displayRole = '乘客';
+          }
+
+          // ✅ 標記是否為當前使用者
+          final isMe = memberId == user.id;
+          final displayName = isMe ? '$nickname (我)' : nickname;
+
+          membersList.add('$displayName ($displayRole)');
+        }
+
+        // ✅ 決定狀態顯示文字
         String displayStatus;
         if (tripData['status'] == 'completed') {
           displayStatus = '已完成';
@@ -81,17 +107,19 @@ class _HistoryPageState extends State<HistoryPage> {
           displayStatus = tripData['status'];
         }
 
-        return {
+        history.add({
+          'trip_id': tripId,  // ✅ 加上 trip_id
           'date': (tripData['depart_time'] as String).substring(0, 10),
           'time': (tripData['depart_time'] as String).substring(11, 16),
           'origin': tripData['origin'] ?? '',
           'destination': tripData['destination'] ?? '',
-          'members_list': [
-            p['role'] == 'driver' ? '我 (司機)' : '我 (乘客)'
-          ],
+          'members_list': membersList,  // ✅ 所有成員
           'status': displayStatus,
-        };
-      }).toList();
+        });
+      }
+
+      debugPrint('✅ 載入完成，共 ${history.length} 筆歷史行程');
+      debugPrint('========================================');
 
       if (mounted) {
         setState(() {
@@ -99,8 +127,11 @@ class _HistoryPageState extends State<HistoryPage> {
           _loading = false;
         });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('========================================');
       debugPrint('❌ 載入歷史失敗: $e');
+      debugPrint('Stack trace: $stackTrace');
+      debugPrint('========================================');
       if (mounted) {
         setState(() => _loading = false);
       }

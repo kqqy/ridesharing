@@ -27,14 +27,14 @@ class _ChatPageState extends State<ChatPage> {
   bool _loading = true;
   bool _loadingMembers = true;
 
-  Timer? _heartbeatTimer;  // ✅ 心跳計時器
-  Timer? _refreshTimer;    // ✅ 定期刷新在線狀態
+  Timer? _heartbeatTimer;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    _startHeartbeat();    // ✅ 開始心跳
-    _startRefreshTimer(); // ✅ 開始定期刷新
+    _startHeartbeat();
+    _startRefreshTimer();
     _fetchMessages();
     _fetchMembers();
   }
@@ -43,22 +43,20 @@ class _ChatPageState extends State<ChatPage> {
   void dispose() {
     _msgController.dispose();
     _scrollController.dispose();
-    _heartbeatTimer?.cancel();  // ✅ 停止心跳
-    _refreshTimer?.cancel();    // ✅ 停止刷新
+    _heartbeatTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
   // ===============================
-  // ✅ 開始心跳（每 30 秒更新一次 last_seen）
+  // 開始心跳
   // ===============================
   void _startHeartbeat() {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    // 立即更新一次
     _updateLastSeen(user.id);
 
-    // 每 30 秒更新一次
     _heartbeatTimer = Timer.periodic(
       const Duration(seconds: 30),
           (_) => _updateLastSeen(user.id),
@@ -66,7 +64,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // ===============================
-  // ✅ 更新 last_seen
+  // 更新 last_seen
   // ===============================
   Future<void> _updateLastSeen(String userId) async {
     try {
@@ -74,24 +72,23 @@ class _ChatPageState extends State<ChatPage> {
           .from('users')
           .update({'last_seen': DateTime.now().toIso8601String()})
           .eq('id', userId);
-      debugPrint('✅ 更新 last_seen: $userId');
     } catch (e) {
       debugPrint('❌ 更新 last_seen 失敗: $e');
     }
   }
 
   // ===============================
-  // ✅ 開始定期刷新在線狀態（每 30 秒）
+  // 開始定期刷新在線狀態
   // ===============================
   void _startRefreshTimer() {
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 30),
-          (_) => _fetchMembers(), // 重新載入成員（會更新在線狀態）
+          (_) => _fetchMembers(),
     );
   }
 
   // ===============================
-  // ✅ 判斷是否在線（5 分鐘內算在線）
+  // 判斷是否在線
   // ===============================
   bool _isOnline(DateTime? lastSeen) {
     if (lastSeen == null) return false;
@@ -133,7 +130,6 @@ class _ChatPageState extends State<ChatPage> {
           displayRole = '乘客';
         }
 
-        // ✅ 判斷在線狀態
         final lastSeen = lastSeenStr != null ? DateTime.parse(lastSeenStr) : null;
         final isOnline = _isOnline(lastSeen);
 
@@ -160,15 +156,26 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // ===============================
-  // 讀取該行程的聊天訊息
+  // ✅ 讀取訊息（使用 chat_messages 表）
   // ===============================
   Future<void> _fetchMessages() async {
     try {
       final data = await supabase
-          .from('trip_messages')
-          .select()
-          .eq('trip_id', widget.tripId)
-          .order('created_at');
+          .from('chat_messages')
+          .select('''
+          id,
+          room_id,
+          sender_id,
+          message,
+          created_at,
+          users!chat_messages_sender_id_fkey(
+            nickname
+          )
+        ''')
+          .eq('room_id', widget.tripId)
+          .order('created_at', ascending: true);  // ✅ 改成 true（舊的在上，新的在下）
+
+      debugPrint('✅ 載入 ${data.length} 則訊息');
 
       setState(() {
         _messages = List<Map<String, dynamic>>.from(data);
@@ -177,32 +184,57 @@ class _ChatPageState extends State<ChatPage> {
 
       _scrollToBottom();
     } catch (e) {
-      debugPrint('fetch messages error: $e');
+      debugPrint('❌ fetch messages error: $e');
       setState(() => _loading = false);
     }
   }
 
   // ===============================
-  // 傳送訊息
+  // ✅ 傳送訊息（使用 chat_messages 表）
   // ===============================
   Future<void> _sendMessage() async {
     final text = _msgController.text.trim();
     if (text.isEmpty) return;
 
     final user = supabase.auth.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      debugPrint('❌ 未登入');
+      return;
+    }
 
-    // ✅ 發送訊息時也更新 last_seen
-    await _updateLastSeen(user.id);
+    try {
+      debugPrint('========================================');
+      debugPrint('🎯 發送訊息');
+      debugPrint('trip_id (room_id): ${widget.tripId}');
+      debugPrint('sender_id: ${user.id}');
+      debugPrint('message: $text');
 
-    await supabase.from('trip_messages').insert({
-      'trip_id': widget.tripId,
-      'user_id': user.id,
-      'content': text,
-    });
+      // 更新 last_seen
+      await _updateLastSeen(user.id);
 
-    _msgController.clear();
-    await _fetchMessages();
+      // ✅ 發送訊息到 chat_messages 表
+      await supabase.from('chat_messages').insert({
+        'room_id': widget.tripId,  // ✅ room_id = trip_id
+        'sender_id': user.id,
+        'message': text,
+      });
+
+      debugPrint('✅ 訊息已發送');
+      debugPrint('========================================');
+
+      _msgController.clear();
+      await _fetchMessages();
+    } catch (e) {
+      debugPrint('========================================');
+      debugPrint('❌ 發送失敗: $e');
+      debugPrint('========================================');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('發送失敗：$e')),
+        );
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -299,16 +331,29 @@ class _ChatPageState extends State<ChatPage> {
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final msg = _messages[index];
-        final bool isMe = msg['user_id'] == currentUserId;
+        final bool isMe = msg['sender_id'] == currentUserId;
 
-        final time = msg['created_at']
-            .toString()
-            .substring(11, 16);
+        // ✅ 修正時間解析
+        String time;
+        try {
+          final createdAt = DateTime.parse(msg['created_at'] as String);
+
+          // 格式化成 HH:mm
+          time = '${createdAt.hour.toString().padLeft(2, '0')}:'
+              '${createdAt.minute.toString().padLeft(2, '0')}';
+        } catch (e) {
+          debugPrint('時間解析失敗: $e');
+          time = '--:--';
+        }
+
+        final senderName = isMe
+            ? null
+            : (msg['users']?['nickname'] ?? '未知');
 
         return _buildMessageBubble(
-          text: msg['content'] ?? '',
+          text: msg['message'] ?? '',
           isMe: isMe,
-          senderName: isMe ? null : '其他成員',
+          senderName: senderName,
           time: time,
         );
       },
@@ -348,8 +393,7 @@ class _ChatPageState extends State<ChatPage> {
                   padding: const EdgeInsets.only(right: 8, bottom: 4),
                   child: Text(
                     time,
-                    style:
-                    const TextStyle(fontSize: 10, color: Colors.grey),
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
                   ),
                 ),
               Container(
@@ -361,10 +405,8 @@ class _ChatPageState extends State<ChatPage> {
                   border:
                   isMe ? null : Border.all(color: Colors.grey.shade300),
                   borderRadius: BorderRadius.circular(20).copyWith(
-                    bottomRight:
-                    isMe ? const Radius.circular(0) : null,
-                    bottomLeft:
-                    !isMe ? const Radius.circular(0) : null,
+                    bottomRight: isMe ? const Radius.circular(0) : null,
+                    bottomLeft: !isMe ? const Radius.circular(0) : null,
                   ),
                 ),
                 child: Text(
@@ -380,8 +422,7 @@ class _ChatPageState extends State<ChatPage> {
                   padding: const EdgeInsets.only(left: 8, bottom: 4),
                   child: Text(
                     time,
-                    style:
-                    const TextStyle(fontSize: 10, color: Colors.grey),
+                    style: const TextStyle(fontSize: 10, color: Colors.grey),
                   ),
                 ),
             ],
@@ -427,8 +468,7 @@ class _ChatPageState extends State<ChatPage> {
             backgroundColor: Colors.blue,
             radius: 20,
             child: IconButton(
-              icon: const Icon(Icons.send,
-                  color: Colors.white, size: 18),
+              icon: const Icon(Icons.send, color: Colors.white, size: 18),
               onPressed: _sendMessage,
             ),
           ),

@@ -23,54 +23,100 @@ class _StatsPageState extends State<StatsPage> {
     super.initState();
     _fetchStats();
   }
-
   Future<void> _fetchStats() async {
     try {
       final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        debugPrint('❌ 用戶未登入');
+        return;
+      }
 
-      // 1. 計算司機行程次數
-      // 查詢 trip_members 表，role 為 'driver'
-      final driverCount = await supabase
+      debugPrint('========================================');
+      debugPrint('📊 開始載入統計資料');
+      debugPrint('user_id: $userId');
+
+      // 1️⃣ 計算司機行程次數
+      final driverData = await supabase
           .from('trip_members')
-          .count(CountOption.exact)
+          .select('id')
           .eq('user_id', userId)
           .eq('role', 'driver');
 
-      // 2. 計算乘客行程次數
-      // 查詢 trip_members 表，role 為 'passenger' 或 'creator' (建立者也是乘客)
-      final passengerCount = await supabase
+      final driverCount = driverData.length;
+      debugPrint('✅ 司機行程次數: $driverCount');
+
+      // 2️⃣ 計算乘客行程次數（包含 creator）
+      final passengerData = await supabase
           .from('trip_members')
-          .count(CountOption.exact)
+          .select('id')
           .eq('user_id', userId)
           .or('role.eq.passenger,role.eq.creator');
 
-      // 3. 取得評價資料 (計算平均分 + 顯示評論)
-      // 修改：關聯 users 表取得 nickname
+      final passengerCount = passengerData.length;
+      debugPrint('✅ 乘客行程次數: $passengerCount');
+
+      // 3️⃣ 取得評價資料（手動查詢）
       final ratingsData = await supabase
           .from('ratings')
-          .select('rating, comment, created_at, users:from_user(nickname)')
+          .select('rating, comment, created_at, from_user')
           .eq('to_user', userId)
           .order('created_at', ascending: false);
 
+      debugPrint('✅ 查詢到 ${ratingsData.length} 則評價');
+
       double totalScore = 0;
+      int totalRatings = 0;  // ✅ 加上計數器
       List<Map<String, dynamic>> tempReviews = [];
 
       if (ratingsData.isNotEmpty) {
+        // ✅ 先計算所有評分的平均（不論有沒有評論）
         for (var r in ratingsData) {
           totalScore += (r['rating'] as num).toDouble();
-          
-          // 只取有留言的顯示在列表，或全部顯示 (這裡取前 10 筆有留言的)
-          if (tempReviews.length < 10 && r['comment'] != null && r['comment'].toString().isNotEmpty) {
+          totalRatings++;
+        }
+
+        _averageRating = totalScore / totalRatings;
+        debugPrint('✅ 平均評分: ${_averageRating.toStringAsFixed(2)} (共 $totalRatings 則評價)');
+
+        // ✅ 再收集有評論的評價（最多 10 筆）
+        for (var r in ratingsData) {
+          final comment = r['comment']?.toString() ?? '';
+          if (tempReviews.length < 10 && comment.isNotEmpty) {
+            // 手動查詢評分者的 nickname
+            final fromUserId = r['from_user'] as String;
+            String nickname = '匿名使用者';
+
+            try {
+              final userInfo = await supabase
+                  .from('users')
+                  .select('nickname')
+                  .eq('id', fromUserId)
+                  .maybeSingle();
+
+              if (userInfo != null) {
+                nickname = userInfo['nickname'] ?? '匿名使用者';
+              }
+            } catch (e) {
+              debugPrint('⚠️ 查詢 nickname 失敗 (user_id: $fromUserId): $e');
+            }
+
             tempReviews.add({
-              'name': r['users']?['nickname'] ?? '匿名使用者',
-              'rating': r['rating'],
-              'comment': r['comment'],
+              'name': nickname,
+              'rating': r['rating'] as int,
+              'comment': comment,
             });
+
+            debugPrint('  - $nickname: ${r['rating']}星 - $comment');
           }
         }
-        _averageRating = totalScore / ratingsData.length;
+
+        debugPrint('✅ 收集到 ${tempReviews.length} 則有評論的評價');
+      } else {
+        debugPrint('⚠️ 沒有收到任何評價');
       }
+
+      debugPrint('✅ 統計資料載入完成');
+      debugPrint('========================================');
 
       if (mounted) {
         setState(() {
@@ -81,18 +127,20 @@ class _StatsPageState extends State<StatsPage> {
         });
       }
 
-    } catch (e) {
-      debugPrint('Error fetching stats: $e');
+    } catch (e, stackTrace) {
+      debugPrint('========================================');
+      debugPrint('❌ 載入統計資料失敗: $e');
+      debugPrint('Stack trace: $stackTrace');
+      debugPrint('========================================');
+
       if (mounted) {
         setState(() => _loading = false);
-        // 發生錯誤時保持 0 或顯示錯誤訊息
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('讀取統計資料失敗')),
+          SnackBar(content: Text('讀取統計資料失敗: $e')),
         );
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {

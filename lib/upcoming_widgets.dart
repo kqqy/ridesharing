@@ -524,40 +524,84 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
     setState(() => _loading = true);
 
     try {
+      // 1️⃣ 一次載入所有申請
       final data = await supabase
           .from('join_requests')
           .select('''
-            trip_id,
-            user_id,
-            created_at,
-            users!join_requests_user_id_fkey(
-              nickname
-            )
-          ''')
+          trip_id,
+          user_id,
+          role,
+          created_at,
+          users!join_requests_user_id_fkey(
+            nickname
+          )
+        ''')
           .eq('trip_id', widget.tripId)
           .order('created_at', ascending: true);
 
+      if (data.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _requests = [];
+            _loading = false;
+          });
+        }
+        return;
+      }
+
+      // 2️⃣ 收集所有 user_id
+      final userIds = data.map((req) => req['user_id'] as String).toList();
+
+      // 3️⃣ ✅ 批次查詢評分（使用 or）
+      final orConditionsRating = userIds.map((id) => 'to_user.eq.$id').join(',');
+      final allRatings = await supabase
+          .from('ratings')
+          .select('to_user, rating')
+          .or(orConditionsRating);
+
+      // 4️⃣ ✅ 批次查詢違規（使用 or）
+      final orConditionsViolation = userIds.map((id) => 'user_id.eq.$id').join(',');
+      final allViolations = await supabase
+          .from('violations')
+          .select('user_id, id')
+          .or(orConditionsViolation);
+
+      // 5️⃣ 整理成 Map
+      final ratingsMap = <String, List<int>>{};
+      for (var rating in allRatings) {
+        final userId = rating['to_user'] as String;
+        ratingsMap.putIfAbsent(userId, () => []);
+        ratingsMap[userId]!.add(rating['rating'] as int);
+      }
+
+      final violationsMap = <String, int>{};
+      for (var violation in allViolations) {
+        final userId = violation['user_id'] as String;
+        violationsMap[userId] = (violationsMap[userId] ?? 0) + 1;
+      }
+
+      // 6️⃣ 組合最終結果
       final requests = <Map<String, dynamic>>[];
 
       for (var req in data) {
         final userId = req['user_id'] as String;
+        final role = req['role'] as String? ?? 'passenger';
+        final nickname = req['users']['nickname'] ?? '未知';
 
-        final ratingData =
-            await supabase.from('ratings').select('rating').eq('to_user', userId);
-
+        final userRatings = ratingsMap[userId] ?? [];
         double avgRating = 5.0;
-        if (ratingData.isNotEmpty) {
-          final sum = ratingData.fold<int>(0, (prev, r) => prev + (r['rating'] as int));
-          avgRating = sum / ratingData.length;
+        if (userRatings.isNotEmpty) {
+          avgRating = userRatings.reduce((a, b) => a + b) / userRatings.length;
         }
 
-        final violationData = await supabase.from('violations').select('id').eq('user_id', userId);
+        final violationCount = violationsMap[userId] ?? 0;
 
         requests.add({
           'user_id': userId,
-          'name': req['users']['nickname'] ?? '未知',
+          'name': nickname,
+          'role': role,
           'rating': avgRating,
-          'violation': violationData.length,
+          'violation': violationCount,
           'created_at': req['created_at'],
         });
       }
@@ -576,34 +620,52 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
     }
   }
 
+  // ✅ 這裡！替換整個 _handleApprove 方法
   Future<void> _handleApprove(Map<String, dynamic> request) async {
     try {
       final userId = request['user_id'];
+      final role = request['role'] ?? 'passenger'; // ✅ 讀取 role
 
+      debugPrint('========================================');
+      debugPrint('✅ 核准加入申請');
+      debugPrint('user_id: $userId');
+      debugPrint('role: $role');
+
+      // 1️⃣ 加入 trip_members（使用正確的 role）
       await supabase.from('trip_members').insert({
         'trip_id': widget.tripId,
         'user_id': userId,
-        'role': 'passenger',
+        'role': role, // ✅ 使用申請時的 role
         'join_time': DateTime.now().toIso8601String(),
       });
 
+      debugPrint('✅ 已加入 trip_members，role: $role');
+
+      // 2️⃣ 刪除申請
       await supabase
           .from('join_requests')
           .delete()
           .eq('trip_id', widget.tripId)
           .eq('user_id', userId);
 
+      debugPrint('✅ 已刪除 join_requests');
+      debugPrint('========================================');
+
       if (mounted) {
         setState(() {
           _requests.removeWhere((r) => r['user_id'] == userId);
         });
 
+        final roleText = role == 'driver' ? '（司機）' : '';
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已核准 ${request['name']} 加入')),
+          SnackBar(content: Text('已核准 ${request['name']} $roleText 加入')),
         );
       }
     } catch (e) {
-      debugPrint('核准失敗: $e');
+      debugPrint('========================================');
+      debugPrint('❌ 核准失敗: $e');
+      debugPrint('========================================');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('核准失敗: $e')),
@@ -647,13 +709,19 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+        constraints: BoxConstraints(
+            maxHeight: MediaQuery
+                .of(context)
+                .size
+                .height * 0.6),
         child: Column(
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('加入申請', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('加入申請',
+                    style:
+                    TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.grey),
                   onPressed: () => Navigator.pop(context),
@@ -665,65 +733,116 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _requests.isEmpty
-                      ? const Center(child: Text('目前沒有待審核的申請', style: TextStyle(color: Colors.grey)))
-                      : ListView.builder(
-                          itemCount: _requests.length,
-                          itemBuilder: (context, index) {
-                            final request = _requests[index];
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.grey[50],
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: Colors.grey.shade200),
-                              ),
-                              child: Row(
+                  ? const Center(
+                  child: Text('目前沒有待審核的申請',
+                      style: TextStyle(color: Colors.grey)))
+                  : ListView.builder(
+                itemCount: _requests.length,
+                itemBuilder: (context, index) {
+                  final request = _requests[index];
+                  final isDriver = request['role'] == 'driver'; // ✅ 判斷是否為司機
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isDriver
+                            ? Colors.blue.shade200 // ✅ 司機用藍色邊框
+                            : Colors.grey.shade200,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          backgroundColor: isDriver
+                              ? Colors.blue[100] // ✅ 司機用藍色
+                              : Colors.orange[100],
+                          child: Icon(
+                            isDriver ? Icons.drive_eta : Icons.person,
+                            // ✅ 司機用車子圖示
+                            color: isDriver ? Colors.blue : Colors.orange,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                            children: [
+                              Row(
                                 children: [
-                                  CircleAvatar(
-                                    backgroundColor: Colors.orange[100],
-                                    child: const Icon(Icons.person, color: Colors.orange),
+                                  Text(
+                                    request['name'],
+                                    style: const TextStyle(
+                                        fontWeight: FontWeight.bold),
+                                  ),
+                                  if (isDriver) ...[ // ✅ 司機標記
+                                    const SizedBox(width: 8),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blue,
+                                        borderRadius:
+                                        BorderRadius.circular(4),
+                                      ),
+                                      child: const Text(
+                                        '司機',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(Icons.star,
+                                      size: 14, color: Colors.amber),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    request['rating']
+                                        .toStringAsFixed(1),
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey),
                                   ),
                                   const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(request['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
-                                        Row(
-                                          children: [
-                                            const Icon(Icons.star, size: 14, color: Colors.amber),
-                                            const SizedBox(width: 2),
-                                            Text(
-                                              (request['rating'] as double).toStringAsFixed(1),
-                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Text(
-                                              '違規: ${request['violation']} 次',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: (request['violation'] as int) > 0 ? Colors.red : Colors.grey,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
+                                  Text(
+                                    '違規: ${request['violation']} 次',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: request['violation'] > 0
+                                          ? Colors.red
+                                          : Colors.grey,
                                     ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
-                                    onPressed: () => _handleApprove(request),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.cancel, color: Colors.red, size: 32),
-                                    onPressed: () => _handleReject(request),
                                   ),
                                 ],
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
+                        IconButton(
+                          icon: const Icon(Icons.check_circle,
+                              color: Colors.green, size: 32),
+                          onPressed: () => _handleApprove(request),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.cancel,
+                              color: Colors.red, size: 32),
+                          onPressed: () => _handleReject(request),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -731,7 +850,6 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
     );
   }
 }
-
 // ==========================================
 // 4️⃣ MemberProfileDialog
 // ==========================================

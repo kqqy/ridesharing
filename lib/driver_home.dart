@@ -39,32 +39,53 @@ class _DriverHomeState extends State<DriverHome> {
   // ===============================
   Future<void> _fetchExploreTrips() async {
     try {
+      debugPrint('========================================');
+      debugPrint('🔍 開始載入探索行程（司機端）');
+
+      // ✅ 直接用 trips 表 + 計算座位
       final data = await supabase
           .from('trips')
-          .select()
+          .select('''
+          *,
+          trip_members(count)
+        ''')
           .eq('status', 'open')
           .order('depart_time');
 
+      debugPrint('✅ 查詢成功，共 ${data.length} 筆行程');
+
       final trips = (data as List).map<Trip>((e) {
+        final seatsTotal = e['seats_total'] ?? 0;
+        final memberCount = (e['trip_members']?[0]?['count'] ?? 0) as int;
+        final seatsLeft = seatsTotal - memberCount;
+
         return Trip(
           id: e['id'].toString(),
           origin: e['origin'] ?? '',
           destination: e['destination'] ?? '',
           departTime: DateTime.parse(e['depart_time']),
-          seatsTotal: e['seats_total'] ?? 0,
-          seatsLeft: e['seats_left'] ?? 0,
+          seatsTotal: seatsTotal,
+          seatsLeft: seatsLeft,  // ✅ 計算出來的
           status: e['status'] ?? '',
           note: e['note'] ?? '',
         );
       }).toList();
+
+      debugPrint('✅ 解析完成，${trips.length} 筆行程');
+      debugPrint('========================================');
 
       if (!mounted) return;
       setState(() {
         _exploreTrips = trips;
         _loadingExplore = false;
       });
-    } catch (e) {
-      debugPrint('fetch explore trips error: $e');
+    } catch (e, stackTrace) {
+      debugPrint('========================================');
+      debugPrint('❌ 載入行程失敗');
+      debugPrint('錯誤: $e');
+      debugPrint('Stack trace: $stackTrace');
+      debugPrint('========================================');
+
       if (!mounted) return;
       setState(() => _loadingExplore = false);
     }
@@ -86,6 +107,19 @@ class _DriverHomeState extends State<DriverHome> {
       return;
     }
 
+    // ✅ 0️⃣ 檢查座位是否已滿
+    if (trip.seatsLeft <= 0) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('行程已滿員'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
     // ✅ 檢查停權狀態
     final isSuspended = await ViolationService().isUserSuspended(user.id);
     if (isSuspended) {
@@ -101,7 +135,12 @@ class _DriverHomeState extends State<DriverHome> {
     }
 
     try {
-      // 檢查是否已經是成員
+      debugPrint('========================================');
+      debugPrint('🚗 司機發送加入申請');
+      debugPrint('trip_id: ${trip.id}');
+      debugPrint('user_id: ${user.id}');
+
+      // 1️⃣ 檢查是否已經是成員
       final existMember = await supabase
           .from('trip_members')
           .select('id')
@@ -110,6 +149,7 @@ class _DriverHomeState extends State<DriverHome> {
           .maybeSingle();
 
       if (existMember != null) {
+        debugPrint('⚠️ 用戶已經在此行程中');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('你已經是此行程的成員')),
@@ -118,7 +158,90 @@ class _DriverHomeState extends State<DriverHome> {
         return;
       }
 
-      // 檢查是否已經發送過申請
+      // 2️⃣ 檢查是否已有司機
+      final existDriver = await supabase
+          .from('trip_members')
+          .select('id')
+          .eq('trip_id', trip.id)
+          .eq('role', 'driver')
+          .maybeSingle();
+
+      if (existDriver != null) {
+        debugPrint('⚠️ 此行程已有司機');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('此行程已有司機'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 3️⃣ ✅ 再次確認座位
+      final tripData = await supabase
+          .from('trips')
+          .select('creator_id, seats_total, trip_members(count)')
+          .eq('id', trip.id)
+          .single();
+
+      final seatsTotal = tripData['seats_total'] as int;
+      final memberCount = (tripData['trip_members']?[0]?['count'] ?? 0) as int;
+      final seatsLeft = seatsTotal - memberCount;
+
+      if (seatsLeft <= 0) {
+        debugPrint('⚠️ 行程已滿員');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('行程已滿員'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 4️⃣ 查詢創建者是否開啟自動審核
+      final creatorId = tripData['creator_id'] as String;
+
+      final creatorData = await supabase
+          .from('users')
+          .select('auto_approve')
+          .eq('id', creatorId)
+          .single();
+
+      final autoApprove = creatorData['auto_approve'] as bool? ?? false;
+
+      debugPrint('創建者自動審核狀態: $autoApprove');
+
+      if (autoApprove) {
+        // ✅ 自動審核：直接加入
+        debugPrint('✅ 自動審核開啟，直接加入行程');
+
+        await supabase.from('trip_members').insert({
+          'trip_id': trip.id,
+          'user_id': user.id,
+          'role': 'driver',
+          'join_time': DateTime.now().toIso8601String(),
+        });
+
+        debugPrint('✅ 成功加入行程（司機）');
+        debugPrint('========================================');
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('已成功加入行程（司機）！'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        return;
+      }
+
+      // 5️⃣ 需要審核：檢查是否已經發送過申請
       final existRequest = await supabase
           .from('join_requests')
           .select('trip_id')
@@ -127,6 +250,7 @@ class _DriverHomeState extends State<DriverHome> {
           .maybeSingle();
 
       if (existRequest != null) {
+        debugPrint('⚠️ 申請已發送，等待審核');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('申請已發送，請等待創建者審核')),
@@ -135,22 +259,30 @@ class _DriverHomeState extends State<DriverHome> {
         return;
       }
 
-      // 發送加入申請
+      // 6️⃣ 發送加入申請（標記為司機）
+      debugPrint('✅ 寫入 join_requests，role: driver');
       await supabase.from('join_requests').insert({
         'trip_id': trip.id,
         'user_id': user.id,
+        'role': 'driver',
       });
+
+      debugPrint('✅ 成功發送司機申請');
+      debugPrint('========================================');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('已發送加入申請，請等待創建者審核'),
+            content: Text('已發送加入申請（司機），請等待創建者審核'),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
-      debugPrint('發送申請失敗: $e');
+      debugPrint('========================================');
+      debugPrint('❌ 發送申請失敗: $e');
+      debugPrint('========================================');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('發送申請失敗: $e')),
@@ -193,7 +325,6 @@ class _DriverHomeState extends State<DriverHome> {
       builder: (context) => const SOSCountdownDialog(),
     );
   }
-
   void _handleArrived() {
     showDialog(
       context: context,

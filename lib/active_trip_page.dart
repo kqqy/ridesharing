@@ -129,17 +129,20 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
   void _handleArrived() {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(  // ✅ 改名避免混淆
         title: const Text('確認到達？'),
         content: const Text('確認後將進入評價頁面'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),  // ✅ 使用 dialogContext
             child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context); // 關閉確認對話框
+              Navigator.pop(dialogContext); // ✅ 關閉確認對話框
+
+              // ✅ 檢查是否還 mounted
+              if (!mounted) return;
 
               // 顯示 Loading
               showDialog(
@@ -149,32 +152,47 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
               );
 
               try {
+                debugPrint('========================================');
+                debugPrint('✅ 開始更新行程狀態為 completed');
+                debugPrint('trip_id: ${widget.tripId}');
+
                 // 更新行程狀態
                 await supabase
                     .from('trips')
                     .update({'status': 'completed'})
                     .eq('id', widget.tripId);
-                
+
+                debugPrint('✅ 行程狀態更新成功');
+                debugPrint('========================================');
+
                 if (!mounted) return;
-                Navigator.pop(context); // 關閉 Loading
+                Navigator.pop(context); // ✅ 關閉 Loading
 
                 if (!mounted) return;
 
-                // 進入評價頁面
+                // ✅ 進入評價頁面
+                debugPrint('🎯 導航到評價頁面，tripId: ${widget.tripId}');
+
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
                     builder: (_) => RatingPage(tripId: widget.tripId),
                   ),
                 );
-              } catch (e) {
-                debugPrint('更新狀態失敗: $e');
-                if (mounted) {
-                  Navigator.pop(context); // 關閉 Loading
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('操作失敗：$e')),
-                  );
-                }
+
+              } catch (e, stackTrace) {
+                debugPrint('========================================');
+                debugPrint('❌ 更新狀態失敗: $e');
+                debugPrint('Stack trace: $stackTrace');
+                debugPrint('========================================');
+
+                if (!mounted) return;
+                Navigator.pop(context); // ✅ 關閉 Loading
+
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('操作失敗：$e')),
+                );
               }
             },
             style: ElevatedButton.styleFrom(
