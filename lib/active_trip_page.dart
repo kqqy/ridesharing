@@ -62,7 +62,7 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
   // SOS（原樣）
   // ===============================
   void _handleSOS() {
-    const String sosNumber = '222';
+    const String sosNumber = '110';
     int sec = 2;
     Timer? timer;
 

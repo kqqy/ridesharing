@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+
 import 'trip_model.dart';
 import 'passenger_widgets.dart';
 import 'stats_page.dart';
@@ -78,39 +82,53 @@ class UpcomingBody extends StatelessWidget {
   }
 
   Widget _empty() => const Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.departure_board, size: 80, color: Colors.grey),
-        SizedBox(height: 20),
-        Text(
-          '目前沒有即將出發的行程',
-          style: TextStyle(fontSize: 18, color: Colors.grey),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.departure_board, size: 80, color: Colors.grey),
+            SizedBox(height: 20),
+            Text(
+              '目前沒有即將出發的行程',
+              style: TextStyle(fontSize: 18, color: Colors.grey),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 }
 
-/// ==========================================
-// 2️⃣ PassengerTripDetailsDialog（含小地圖）
 // ==========================================
-class PassengerTripDetailsDialog extends StatefulWidget {
-  final Trip trip;
-  const PassengerTripDetailsDialog({super.key, required this.trip});
+// ✅ 2️⃣ MiniRouteMap（真的 GoogleMap，但禁止滑動/縮放）
+//  - 會把出發/目的地 marker + 路徑 polyline 畫出來
+//  - 會自動 fitBounds，地點再遠都看得到兩點
+// ==========================================
+class MiniRouteMap extends StatefulWidget {
+  final String origin;
+  final String destination;
+
+  const MiniRouteMap({
+    super.key,
+    required this.origin,
+    required this.destination,
+  });
 
   @override
-  State<PassengerTripDetailsDialog> createState() =>
-      _PassengerTripDetailsDialogState();
+  State<MiniRouteMap> createState() => _MiniRouteMapState();
 }
 
-class _PassengerTripDetailsDialogState
-    extends State<PassengerTripDetailsDialog> {
-  List<Map<String, dynamic>> _members = [];
-  bool _loading = true;
+class _MiniRouteMapState extends State<MiniRouteMap> {
+  GoogleMapController? _controller;
 
-  // ✅ 小地圖相關
-  String? _staticMapUrl;
+  LatLng? _o;
+  LatLng? _d;
+
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+
+  bool _loading = true;
+  bool _routeBuilt = false;
+
+  // ✅ 這個 Key 是拿來打 Directions（畫路線）
+  //    注意：要啟用 Directions API / Billing / Key restriction 要允許
   static const String _googleApiKey = 'AIzaSyCQjEBcgsPbLD14kXGPcG7UUvDyd4PlPH0';
 
   @override
@@ -119,54 +137,256 @@ class _PassengerTripDetailsDialogState
     _load();
   }
 
+  /// 給地名加「台灣」避免 NTU 這種模糊字串被帶去國外或錯點
+  String _normalizeTaiwan(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return t;
+
+    // 你也可以改成更嚴格：強制加 ", Taiwan"
+    final hasTaiwan = t.contains('台灣') || t.toLowerCase().contains('taiwan');
+    return hasTaiwan ? t : '$t, 台灣';
+  }
+
   Future<void> _load() async {
-    // 載入成員資料
-    final data = await supabase
-        .from('trip_members')
-        .select('user_id, role, users!trip_members_user_id_fkey(nickname)')
-        .eq('trip_id', widget.trip.id);
+    setState(() => _loading = true);
+    _routeBuilt = false;
 
-    final members = <Map<String, dynamic>>[];
+    try {
+      final originText = _normalizeTaiwan(widget.origin);
+      final destText = _normalizeTaiwan(widget.destination);
 
-    for (final m in data) {
-      final ratings = await supabase
-          .from('ratings')
-          .select('rating')
-          .eq('to_user', m['user_id']);
+      final oLoc = await locationFromAddress(originText);
+      final dLoc = await locationFromAddress(destText);
 
-      final avg = ratings.isEmpty
-          ? 5.0
-          : ratings.fold<int>(0, (p, r) => p + (r['rating'] as int)) /
-          ratings.length;
+      _o = LatLng(oLoc.first.latitude, oLoc.first.longitude);
+      _d = LatLng(dLoc.first.latitude, dLoc.first.longitude);
 
-      members.add({
-        'name': m['users']['nickname'] ?? '未知',
-        'role': m['role'] == 'creator'
-            ? '創建者'
-            : m['role'] == 'driver'
-            ? '司機'
-            : '乘客',
-        'rating': avg,
-      });
+      _markers
+        ..clear()
+        ..add(Marker(
+          markerId: const MarkerId('origin'),
+          position: _o!,
+          infoWindow: const InfoWindow(title: '出發地'),
+        ))
+        ..add(Marker(
+          markerId: const MarkerId('dest'),
+          position: _d!,
+          infoWindow: const InfoWindow(title: '目的地'),
+        ));
+
+      // 嘗試拿 Directions 畫路線（取不到就直線）
+      await _buildRoute();
+    } catch (e) {
+      debugPrint('MiniRouteMap load failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+      // controller 可能還沒 ready，onMapCreated 會再 fitBounds
+    }
+  }
+
+  Future<void> _buildRoute() async {
+    if (_routeBuilt) return;
+    _routeBuilt = true;
+
+    if (_o == null || _d == null) return;
+
+    try {
+      final polylinePoints = PolylinePoints();
+      final result = await polylinePoints.getRouteBetweenCoordinates(
+        googleApiKey: _googleApiKey,
+        request: PolylineRequest(
+          origin: PointLatLng(_o!.latitude, _o!.longitude),
+          destination: PointLatLng(_d!.latitude, _d!.longitude),
+          mode: TravelMode.driving,
+        ),
+      );
+
+      if (result.points.isNotEmpty) {
+        final pts = result.points.map((p) => LatLng(p.latitude, p.longitude)).toList();
+        _polylines
+          ..clear()
+          ..add(Polyline(
+            polylineId: const PolylineId('route'),
+            points: pts,
+            width: 5,
+          ));
+      } else {
+        // fallback：直線
+        _polylines
+          ..clear()
+          ..add(Polyline(
+            polylineId: const PolylineId('line'),
+            points: [_o!, _d!],
+            width: 4,
+          ));
+
+        debugPrint('Directions points empty. status=${result.status} err=${result.errorMessage}');
+      }
+    } catch (e) {
+      debugPrint('MiniRouteMap buildRoute failed: $e');
+      // fallback：直線
+      if (_o != null && _d != null) {
+        _polylines
+          ..clear()
+          ..add(Polyline(
+            polylineId: const PolylineId('line'),
+            points: [_o!, _d!],
+            width: 4,
+          ));
+      }
+    }
+  }
+
+  void _fitBounds(LatLng a, LatLng b) {
+    final sw = LatLng(
+      a.latitude < b.latitude ? a.latitude : b.latitude,
+      a.longitude < b.longitude ? a.longitude : b.longitude,
+    );
+    final ne = LatLng(
+      a.latitude > b.latitude ? a.latitude : b.latitude,
+      a.longitude > b.longitude ? a.longitude : b.longitude,
+    );
+
+    _controller?.animateCamera(
+      CameraUpdate.newLatLngBounds(LatLngBounds(southwest: sw, northeast: ne), 40),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Container(
+        height: 200,
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(child: CircularProgressIndicator()),
+      );
     }
 
-    // ✅ 產生 Google Static Maps URL
-    final origin = Uri.encodeComponent(widget.trip.origin);
-    final destination = Uri.encodeComponent(widget.trip.destination);
+    if (_o == null || _d == null) {
+      return Container(
+        height: 200,
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 16),
+        decoration: BoxDecoration(
+          color: Colors.grey[200],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.map, size: 48, color: Colors.grey),
+              SizedBox(height: 8),
+              Text('地圖載入失敗（定位不到地址）', style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
 
-    _staticMapUrl = 'https://maps.googleapis.com/maps/api/staticmap?'
-        'size=600x200&'
-        'scale=2&'
-        'markers=color:green|label:A|$origin&'
-        'markers=color:red|label:B|$destination&'
-        'path=color:0x0000ff|weight:5|$origin|$destination&'
-        'key=$_googleApiKey';
+    return Container(
+      height: 200,
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: GoogleMap(
+          initialCameraPosition: CameraPosition(target: _o!, zoom: 13),
+          onMapCreated: (c) {
+            _controller = c;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _fitBounds(_o!, _d!);
+            });
+          },
 
-    if (mounted) {
+          // ✅ 禁止互動：不能滑動、不能縮放、不能旋轉
+          scrollGesturesEnabled: false,
+          zoomGesturesEnabled: false,
+          rotateGesturesEnabled: false,
+          tiltGesturesEnabled: false,
+
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: false,
+
+          markers: _markers,
+          polylines: _polylines,
+        ),
+      ),
+    );
+  }
+}
+
+/// ==========================================
+// 2️⃣ PassengerTripDetailsDialog（改成真的 GoogleMap 小地圖）
+// ==========================================
+class PassengerTripDetailsDialog extends StatefulWidget {
+  final Trip trip;
+  const PassengerTripDetailsDialog({super.key, required this.trip});
+
+  @override
+  State<PassengerTripDetailsDialog> createState() => _PassengerTripDetailsDialogState();
+}
+
+class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog> {
+  List<Map<String, dynamic>> _members = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMembers();
+  }
+
+  Future<void> _loadMembers() async {
+    try {
+      final data = await supabase
+          .from('trip_members')
+          .select('user_id, role, users!trip_members_user_id_fkey(nickname)')
+          .eq('trip_id', widget.trip.id);
+
+      final members = <Map<String, dynamic>>[];
+
+      for (final m in data) {
+        final ratings = await supabase
+            .from('ratings')
+            .select('rating')
+            .eq('to_user', m['user_id']);
+
+        final avg = ratings.isEmpty
+            ? 5.0
+            : ratings.fold<int>(0, (p, r) => p + (r['rating'] as int)) / ratings.length;
+
+        members.add({
+          'name': (m['users']?['nickname'] ?? '未知').toString(),
+          'role': m['role'] == 'creator'
+              ? '創建者'
+              : m['role'] == 'driver'
+                  ? '司機'
+                  : '乘客',
+          'rating': avg,
+        });
+      }
+
+      if (!mounted) return;
       setState(() {
         _members = members;
         _loading = false;
       });
+    } catch (e) {
+      debugPrint('load members failed: $e');
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
   }
 
@@ -176,16 +396,13 @@ class _PassengerTripDetailsDialogState
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        constraints:
-        BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .8),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .8),
         child: Column(
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('行程詳細資訊',
-                    style:
-                    TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('行程詳細資訊', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
@@ -197,73 +414,28 @@ class _PassengerTripDetailsDialogState
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ✅ 小地圖
-                    if (_staticMapUrl != null)
-                      Container(
-                        height: 200,
-                        width: double.infinity,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade300),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.network(
-                            _staticMapUrl!,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                color: Colors.grey[200],
-                                child: Center(
-                                  child: CircularProgressIndicator(
-                                    value: loadingProgress.expectedTotalBytes != null
-                                        ? loadingProgress.cumulativeBytesLoaded /
-                                        loadingProgress.expectedTotalBytes!
-                                        : null,
-                                  ),
-                                ),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) {
-                              debugPrint('地圖載入失敗: $error');
-                              return Container(
-                                color: Colors.grey[200],
-                                child: const Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(Icons.map, size: 48, color: Colors.grey),
-                                      SizedBox(height: 8),
-                                      Text('地圖載入失敗',
-                                          style: TextStyle(color: Colors.grey)),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ✅ 真正 GoogleMap 小地圖（不可滑動）
+                          MiniRouteMap(
+                            origin: widget.trip.origin,
+                            destination: widget.trip.destination,
                           ),
-                        ),
+
+                          _section('行程資訊'),
+                          _item(Icons.my_location, '出發地', widget.trip.origin),
+                          _item(Icons.flag, '目的地', widget.trip.destination),
+                          _item(Icons.access_time, '出發時間', widget.trip.timeText),
+                          _item(Icons.event_seat, '剩餘座位', widget.trip.seatsText),
+                          _item(Icons.note, '備註', widget.trip.note.isEmpty ? '無' : widget.trip.note),
+                          const SizedBox(height: 20),
+
+                          _section('成員列表'),
+                          ..._members.map(_memberCard),
+                        ],
                       ),
-                    _section('行程資訊'),
-                    _item(Icons.my_location, '出發地', widget.trip.origin),
-                    _item(Icons.flag, '目的地', widget.trip.destination),
-                    _item(Icons.access_time, '出發時間',
-                        widget.trip.timeText),
-                    _item(Icons.event_seat, '剩餘座位',
-                        widget.trip.seatsText),
-                    _item(Icons.note, '備註',
-                        widget.trip.note.isEmpty ? '無' : widget.trip.note),
-                    const SizedBox(height: 20),
-                    _section('成員列表'),
-                    ..._members.map(_memberCard),
-                  ],
-                ),
-              ),
+                    ),
             ),
           ],
         ),
@@ -272,58 +444,55 @@ class _PassengerTripDetailsDialogState
   }
 
   Widget _section(String t) => Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(t,
-          style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey)));
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          t,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey),
+        ),
+      );
 
   Widget _item(IconData i, String l, String v) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Row(
-      children: [
-        Icon(i, size: 18, color: Colors.grey),
-        const SizedBox(width: 8),
-        SizedBox(width: 70, child: Text('$l：')),
-        Expanded(child: Text(v)),
-      ],
-    ),
-  );
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          children: [
+            Icon(i, size: 18, color: Colors.grey),
+            const SizedBox(width: 8),
+            SizedBox(width: 70, child: Text('$l：')),
+            Expanded(child: Text(v)),
+          ],
+        ),
+      );
 
   Widget _memberCard(Map<String, dynamic> m) => Container(
-    margin: const EdgeInsets.only(bottom: 8),
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.grey[50],
-      borderRadius: BorderRadius.circular(8),
-      border: Border.all(color: Colors.grey.shade200),
-    ),
-    child: Row(
-      children: [
-        CircleAvatar(
-          backgroundColor:
-          m['role'] == '司機' ? Colors.blue[100] : Colors.orange[100],
-          child: Icon(m['role'] == '司機' ? Icons.drive_eta : Icons.person),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey.shade200),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(m['name'],
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text(m['role'],
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
-          ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: m['role'] == '司機' ? Colors.blue[100] : Colors.orange[100],
+              child: Icon(m['role'] == '司機' ? Icons.drive_eta : Icons.person),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(m['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(m['role'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                ],
+              ),
+            ),
+            const Icon(Icons.star, color: Colors.amber, size: 16),
+            const SizedBox(width: 4),
+            Text((m['rating'] as double).toStringAsFixed(1)),
+          ],
         ),
-        const Icon(Icons.star, color: Colors.amber, size: 16),
-        const SizedBox(width: 4),
-        Text(m['rating'].toStringAsFixed(1)),
-      ],
-    ),
-  );
+      );
 }
 
 // ==========================================
@@ -373,20 +542,16 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
       for (var req in data) {
         final userId = req['user_id'] as String;
 
-        final ratingData = await supabase
-            .from('ratings')
-            .select('rating')
-            .eq('to_user', userId);
+        final ratingData =
+            await supabase.from('ratings').select('rating').eq('to_user', userId);
 
         double avgRating = 5.0;
         if (ratingData.isNotEmpty) {
-          final sum = ratingData.fold<int>(
-              0, (prev, r) => prev + (r['rating'] as int));
+          final sum = ratingData.fold<int>(0, (prev, r) => prev + (r['rating'] as int));
           avgRating = sum / ratingData.length;
         }
 
-        final violationData =
-        await supabase.from('violations').select('id').eq('user_id', userId);
+        final violationData = await supabase.from('violations').select('id').eq('user_id', userId);
 
         requests.add({
           'user_id': userId,
@@ -482,16 +647,13 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.6),
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
         child: Column(
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('加入申請',
-                    style:
-                    TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('加入申請', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 IconButton(
                   icon: const Icon(Icons.close, color: Colors.grey),
                   onPressed: () => Navigator.pop(context),
@@ -503,81 +665,65 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _requests.isEmpty
-                  ? const Center(
-                  child: Text('目前沒有待審核的申請',
-                      style: TextStyle(color: Colors.grey)))
-                  : ListView.builder(
-                itemCount: _requests.length,
-                itemBuilder: (context, index) {
-                  final request = _requests[index];
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[50],
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade200),
-                    ),
-                    child: Row(
-                      children: [
-                        CircleAvatar(
-                          backgroundColor: Colors.orange[100],
-                          child: const Icon(Icons.person,
-                              color: Colors.orange),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                request['name'],
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
+                      ? const Center(child: Text('目前沒有待審核的申請', style: TextStyle(color: Colors.grey)))
+                      : ListView.builder(
+                          itemCount: _requests.length,
+                          itemBuilder: (context, index) {
+                            final request = _requests[index];
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade200),
                               ),
-                              Row(
+                              child: Row(
                                 children: [
-                                  const Icon(Icons.star,
-                                      size: 14, color: Colors.amber),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    request['rating']
-                                        .toStringAsFixed(1),
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey),
+                                  CircleAvatar(
+                                    backgroundColor: Colors.orange[100],
+                                    child: const Icon(Icons.person, color: Colors.orange),
                                   ),
                                   const SizedBox(width: 12),
-                                  Text(
-                                    '違規: ${request['violation']} 次',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: request['violation'] > 0
-                                          ? Colors.red
-                                          : Colors.grey,
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(request['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+                                        Row(
+                                          children: [
+                                            const Icon(Icons.star, size: 14, color: Colors.amber),
+                                            const SizedBox(width: 2),
+                                            Text(
+                                              (request['rating'] as double).toStringAsFixed(1),
+                                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              '違規: ${request['violation']} 次',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: (request['violation'] as int) > 0 ? Colors.red : Colors.grey,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.check_circle, color: Colors.green, size: 32),
+                                    onPressed: () => _handleApprove(request),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.cancel, color: Colors.red, size: 32),
+                                    onPressed: () => _handleReject(request),
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.check_circle,
-                              color: Colors.green, size: 32),
-                          onPressed: () => _handleApprove(request),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.cancel,
-                              color: Colors.red, size: 32),
-                          onPressed: () => _handleReject(request),
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
@@ -611,17 +757,13 @@ class MemberProfileDialog extends StatelessWidget {
       child: Stack(
         children: [
           Padding(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 30.0),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   name,
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87),
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black87),
                 ),
                 const SizedBox(height: 15),
                 const Divider(color: Colors.black12, thickness: 1),
@@ -635,32 +777,23 @@ class MemberProfileDialog extends StatelessWidget {
                   children: [
                     const Text(
                       '平均評價',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
                     ),
                     const SizedBox(width: 15),
                     Row(
                       children: List.generate(5, (index) {
                         if (index < rating.floor()) {
-                          return const Icon(Icons.star,
-                              color: Colors.amber, size: 24);
+                          return const Icon(Icons.star, color: Colors.amber, size: 24);
                         } else if (index < rating) {
-                          return const Icon(Icons.star_half,
-                              color: Colors.amber, size: 24);
+                          return const Icon(Icons.star_half, color: Colors.amber, size: 24);
                         }
-                        return const Icon(Icons.star_border,
-                            color: Colors.amber, size: 24);
+                        return const Icon(Icons.star_border, color: Colors.amber, size: 24);
                       }),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       rating.toString(),
-                      style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87),
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87),
                     ),
                   ],
                 ),
@@ -668,8 +801,7 @@ class MemberProfileDialog extends StatelessWidget {
                 const Divider(color: Colors.black12, thickness: 1),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('關閉',
-                      style: TextStyle(color: Colors.blueGrey, fontSize: 16)),
+                  child: const Text('關閉', style: TextStyle(color: Colors.blueGrey, fontSize: 16)),
                 ),
               ],
             ),
@@ -680,14 +812,12 @@ class MemberProfileDialog extends StatelessWidget {
             child: TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (context) => const StatsPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const StatsPage()));
               },
-              child: const Text('詳細資料',
-                  style: TextStyle(
-                      color: Colors.blue,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold)),
+              child: const Text(
+                '詳細資料',
+                style: TextStyle(color: Colors.blue, fontSize: 14, fontWeight: FontWeight.bold),
+              ),
             ),
           ),
         ],
@@ -699,15 +829,8 @@ class MemberProfileDialog extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontSize: 16, color: Colors.black54),
-        ),
-        Text(
-          value,
-          style: const TextStyle(
-              fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold),
-        ),
+        Text(label, style: const TextStyle(fontSize: 16, color: Colors.black54)),
+        Text(value, style: const TextStyle(fontSize: 16, color: Colors.red, fontWeight: FontWeight.bold)),
       ],
     );
   }
@@ -727,8 +850,7 @@ class PassengerManifestDialog extends StatefulWidget {
   });
 
   @override
-  State<PassengerManifestDialog> createState() =>
-      _PassengerManifestDialogState();
+  State<PassengerManifestDialog> createState() => _PassengerManifestDialogState();
 }
 
 class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
@@ -749,47 +871,41 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('確認成員是否到達',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text('確認成員是否到達', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
-            const Text('被標記為未到達的成員將會被記錄違規',
-                style: TextStyle(fontSize: 14, color: Colors.red)),
+            const Text('被標記為未到達的成員將會被記錄違規', style: TextStyle(fontSize: 14, color: Colors.red)),
             const Divider(),
             const SizedBox(height: 10),
             Container(
               constraints: const BoxConstraints(maxHeight: 250),
               child: ListView(
                 shrinkWrap: true,
-                children: widget.members
-                    .map((m) {
-                      final id = m['id']!;
-                      final name = m['name']!;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10.0),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(name,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold)),
-                            ),
-                            Row(
-                              children: [
-                                _buildStatusBtn(
-                                    '已到達', id, 1, Colors.green),
-                                const SizedBox(width: 10),
-                                _buildStatusBtn(
-                                    '未到達', id, 2, Colors.red),
-                              ],
-                            )
-                          ],
+                children: widget.members.map((m) {
+                  final id = m['id']!;
+                  final name = m['name']!;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
                         ),
-                      );
-                    })
-                    .toList(),
+                        Row(
+                          children: [
+                            _buildStatusBtn('已到達', id, 1, Colors.green),
+                            const SizedBox(width: 10),
+                            _buildStatusBtn('未到達', id, 2, Colors.red),
+                          ],
+                        )
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
             ),
             const SizedBox(height: 20),
@@ -797,14 +913,12 @@ class _PassengerManifestDialogState extends State<PassengerManifestDialog> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('取消',
-                        style: TextStyle(color: Colors.grey, fontSize: 16))),
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消', style: TextStyle(color: Colors.grey, fontSize: 16)),
+                ),
                 ElevatedButton(
                   onPressed: () => widget.onConfirm(_status),
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
                   child: const Text('確定出發', style: TextStyle(fontSize: 16)),
                 ),
               ],
@@ -873,8 +987,7 @@ class _DriverManifestDialogState extends State<DriverManifestDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('目前乘客',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text('目前乘客', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             const Divider(),
             const SizedBox(height: 10),
@@ -884,35 +997,36 @@ class _DriverManifestDialogState extends State<DriverManifestDialog> {
                 shrinkWrap: true,
                 children: widget.passengers
                     .map((p) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 10.0),
-                    child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(p,
-                              style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold)),
-                          Row(children: [
-                            _buildStatusBtn('已上車', p, 1, Colors.green),
-                            const SizedBox(width: 10),
-                            _buildStatusBtn('未出現', p, 2, Colors.red)
-                          ])
-                        ])))
+                          padding: const EdgeInsets.symmetric(vertical: 10.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(p, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                              Row(
+                                children: [
+                                  _buildStatusBtn('已上車', p, 1, Colors.green),
+                                  const SizedBox(width: 10),
+                                  _buildStatusBtn('未出現', p, 2, Colors.red),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ))
                     .toList(),
               ),
             ),
             const SizedBox(height: 20),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-              OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消')),
-              ElevatedButton(
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+                ElevatedButton(
                   onPressed: widget.onConfirm,
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white),
-                  child: const Text('確認出發'))
-            ]),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                  child: const Text('確認出發'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -924,14 +1038,19 @@ class _DriverManifestDialogState extends State<DriverManifestDialog> {
     return InkWell(
       onTap: () => setState(() => _status[p] = val),
       child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-              color: isSelected ? color : Colors.grey[200],
-              borderRadius: BorderRadius.circular(8)),
-          child: Text(label,
-              style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.bold))),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.grey[200],
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.black,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
     );
   }
 }
