@@ -367,6 +367,14 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
             ? 5.0
             : ratings.fold<int>(0, (p, r) => p + (r['rating'] as int)) / ratings.length;
 
+        // ✅ 查詢違規次數
+        final suspension = await supabase
+            .from('suspensions')
+            .select('violation_count')
+            .eq('user_id', m['user_id'])
+            .maybeSingle();
+        final vCount = (suspension?['violation_count'] as int?) ?? 0;
+
         members.add({
           'name': (m['users']?['nickname'] ?? '未知').toString(),
           'role': m['role'] == 'creator'
@@ -375,6 +383,7 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
                   ? '司機'
                   : '乘客',
           'rating': avg,
+          'violation': vCount,
         });
       }
 
@@ -484,6 +493,14 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
                 children: [
                   Text(m['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
                   Text(m['role'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '違規: ${m['violation']} 次',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: (m['violation'] as int) > 0 ? Colors.red : Colors.grey,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -561,9 +578,9 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
 
       // 4️⃣ ✅ 批次查詢違規（使用 or）
       final orConditionsViolation = userIds.map((id) => 'user_id.eq.$id').join(',');
-      final allViolations = await supabase
-          .from('violations')
-          .select('user_id, id')
+      final allSuspensions = await supabase
+          .from('suspensions')
+          .select('user_id, violation_count')
           .or(orConditionsViolation);
 
       // 5️⃣ 整理成 Map
@@ -575,9 +592,9 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
       }
 
       final violationsMap = <String, int>{};
-      for (var violation in allViolations) {
-        final userId = violation['user_id'] as String;
-        violationsMap[userId] = (violationsMap[userId] ?? 0) + 1;
+      for (var suspension in allSuspensions) {
+        final userId = suspension['user_id'] as String;
+        violationsMap[userId] = (suspension['violation_count'] as int?) ?? 0;
       }
 
       // 6️⃣ 組合最終結果
