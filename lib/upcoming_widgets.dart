@@ -881,28 +881,28 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                               ),
                               Row(
                                 children: [
-                                  const Icon(Icons.star,
-                                      size: 14, color: Colors.amber),
+                                  const Icon(Icons.star, size: 14, color: Colors.amber),
                                   const SizedBox(width: 2),
                                   Text(
-                                    request['rating']
-                                        .toStringAsFixed(1),
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey),
+                                    (request['rating'] as double).toStringAsFixed(1),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                                   ),
                                   const SizedBox(width: 12),
-                                  Text(
-                                    '違規: ${request['violation']} 次',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: request['violation'] > 0
-                                          ? Colors.red
-                                          : Colors.grey,
+
+                                  // ✅ 關鍵：讓「違規」這段在空間不足時自動縮/省略
+                                  Expanded(
+                                    child: Text(
+                                      '違規: ${request['violation']} 次',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: request['violation'] > 0 ? Colors.red : Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 ],
-                              ),
+                              )
                             ],
                           ),
                         ),
