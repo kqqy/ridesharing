@@ -29,6 +29,7 @@ class _ChatPageState extends State<ChatPage> {
 
   Timer? _heartbeatTimer;
   Timer? _refreshTimer;
+  RealtimeChannel? _messageChannel;  // ✅ 加上這個
 
   @override
   void initState() {
@@ -37,6 +38,7 @@ class _ChatPageState extends State<ChatPage> {
     _startRefreshTimer();
     _fetchMessages();
     _fetchMembers();
+    _subscribeToMessages();  // ✅ 訂閱即時訊息
   }
 
   @override
@@ -45,7 +47,52 @@ class _ChatPageState extends State<ChatPage> {
     _scrollController.dispose();
     _heartbeatTimer?.cancel();
     _refreshTimer?.cancel();
+    _messageChannel?.unsubscribe();  // ✅ 取消訂閱
     super.dispose();
+  }
+
+  // ===============================
+  // ✅ 訂閱即時訊息
+  // ===============================
+  void _subscribeToMessages() {
+    debugPrint('========================================');
+    debugPrint('📡 開始訂閱即時訊息');
+    debugPrint('room_id: ${widget.tripId}');
+
+    final channelName = 'chat_messages:${widget.tripId}';
+
+    _messageChannel = supabase
+        .channel(channelName)
+        .onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'chat_messages',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'room_id',
+        value: widget.tripId,
+      ),
+      callback: (payload) {
+        debugPrint('========================================');
+        debugPrint('📨 收到 Realtime 事件');
+        debugPrint('event: ${payload.eventType}');
+        debugPrint('table: ${payload.table}');
+        debugPrint('========================================');
+
+        _fetchMessages();
+      },
+    )
+        .subscribe((status, error) {
+      debugPrint('========================================');
+      debugPrint('📡 訂閱狀態變更: $status');
+      if (error != null) {
+        debugPrint('❌ 訂閱錯誤: $error');
+      }
+      debugPrint('========================================');
+    });
+
+    debugPrint('✅ 訂閱請求已發送');
+    debugPrint('========================================');
   }
 
   // ===============================
@@ -156,7 +203,7 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   // ===============================
-  // ✅ 讀取訊息（使用 chat_messages 表）
+  // 讀取訊息
   // ===============================
   Future<void> _fetchMessages() async {
     try {
@@ -173,25 +220,32 @@ class _ChatPageState extends State<ChatPage> {
           )
         ''')
           .eq('room_id', widget.tripId)
-          .order('created_at', ascending: true);  // ✅ 改成 true（舊的在上，新的在下）
+          .order('created_at', ascending: true);
 
       debugPrint('✅ 載入 ${data.length} 則訊息');
 
-      setState(() {
-        _messages = List<Map<String, dynamic>>.from(data);
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _messages = List<Map<String, dynamic>>.from(data);
+          _loading = false;
+        });
 
-      _scrollToBottom();
+        _scrollToBottom();
+      }
     } catch (e) {
       debugPrint('❌ fetch messages error: $e');
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   // ===============================
-  // ✅ 傳送訊息（使用 chat_messages 表）
+  // 傳送訊息
   // ===============================
+  // ===============================
+// 傳送訊息
+// ===============================
   Future<void> _sendMessage() async {
     final text = _msgController.text.trim();
     if (text.isEmpty) return;
@@ -204,26 +258,30 @@ class _ChatPageState extends State<ChatPage> {
 
     try {
       debugPrint('========================================');
-      debugPrint('🎯 發送訊息');
-      debugPrint('trip_id (room_id): ${widget.tripId}');
-      debugPrint('sender_id: ${user.id}');
-      debugPrint('message: $text');
+      debugPrint('🎯 發送訊息: $text');
 
       // 更新 last_seen
       await _updateLastSeen(user.id);
 
-      // ✅ 發送訊息到 chat_messages 表
+      // 儲存訊息
+      final messageText = text;
+
+      // 清空輸入框
+      _msgController.clear();
+
+      // 發送訊息
       await supabase.from('chat_messages').insert({
-        'room_id': widget.tripId,  // ✅ room_id = trip_id
+        'room_id': widget.tripId,
         'sender_id': user.id,
-        'message': text,
+        'message': messageText,
       });
 
       debugPrint('✅ 訊息已發送');
-      debugPrint('========================================');
 
-      _msgController.clear();
+      // ✅ 立即刷新
       await _fetchMessages();
+
+      debugPrint('========================================');
     } catch (e) {
       debugPrint('========================================');
       debugPrint('❌ 發送失敗: $e');
@@ -236,6 +294,7 @@ class _ChatPageState extends State<ChatPage> {
       }
     }
   }
+
 
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -333,14 +392,24 @@ class _ChatPageState extends State<ChatPage> {
         final msg = _messages[index];
         final bool isMe = msg['sender_id'] == currentUserId;
 
-        // ✅ 修正時間解析
         String time;
         try {
           final createdAt = DateTime.parse(msg['created_at'] as String);
+          final now = DateTime.now();
+          final today = DateTime(now.year, now.month, now.day);
+          final messageDate = DateTime(createdAt.year, createdAt.month, createdAt.day);
 
-          // 格式化成 HH:mm
-          time = '${createdAt.hour.toString().padLeft(2, '0')}:'
-              '${createdAt.minute.toString().padLeft(2, '0')}';
+          if (messageDate == today) {
+            // 今天：只顯示時間
+            time = '${createdAt.hour.toString().padLeft(2, '0')}:'
+                '${createdAt.minute.toString().padLeft(2, '0')}';
+          } else if (messageDate == today.subtract(const Duration(days: 1))) {
+            // 昨天
+            time = '昨天 ${createdAt.hour}:${createdAt.minute}';
+          } else {
+            // 更早
+            time = '${createdAt.month}/${createdAt.day} ${createdAt.hour}:${createdAt.minute}';
+          }
         } catch (e) {
           debugPrint('時間解析失敗: $e');
           time = '--:--';
