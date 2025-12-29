@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import 'trip_model.dart';
 import 'passenger_widgets.dart';
@@ -233,11 +235,27 @@ class _MiniRouteMapState extends State<MiniRouteMap> {
       final originText = _normalizeTaiwan(widget.origin);
       final destText = _normalizeTaiwan(widget.destination);
 
-      final oLoc = await locationFromAddress(originText);
-      final dLoc = await locationFromAddress(destText);
+      try {
+        // 1. 嘗試原生 Geocoding
+        final oLoc = await locationFromAddress(originText);
+        final dLoc = await locationFromAddress(destText);
 
-      _o = LatLng(oLoc.first.latitude, oLoc.first.longitude);
-      _d = LatLng(dLoc.first.latitude, dLoc.first.longitude);
+        _o = LatLng(oLoc.first.latitude, oLoc.first.longitude);
+        _d = LatLng(dLoc.first.latitude, dLoc.first.longitude);
+      } catch (e) {
+        debugPrint('原生 Geocoding 失敗 ($e)，嘗試 Google API...');
+        
+        // 2. 備案：Google Geocoding API
+        final o = await _fetchGoogleGeocoding(originText);
+        final d = await _fetchGoogleGeocoding(destText);
+
+        if (o != null && d != null) {
+          _o = o;
+          _d = d;
+        } else {
+          throw '無法定位地址: $e';
+        }
+      }
 
       _markers
         ..clear()
@@ -260,6 +278,25 @@ class _MiniRouteMapState extends State<MiniRouteMap> {
       if (mounted) setState(() => _loading = false);
       // controller 可能還沒 ready，onMapCreated 會再 fitBounds
     }
+  }
+
+  Future<LatLng?> _fetchGoogleGeocoding(String address) async {
+    try {
+      final url = Uri.parse(
+          'https://maps.googleapis.com/maps/api/geocode/json?address=${Uri.encodeComponent(address)}&key=$_googleApiKey');
+      
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['status'] == 'OK' && (data['results'] as List).isNotEmpty) {
+          final location = data['results'][0]['geometry']['location'];
+          return LatLng(location['lat'], location['lng']);
+        }
+      }
+    } catch (e) {
+      debugPrint('Google Geocoding API error: $e');
+    }
+    return null;
   }
 
   Future<void> _buildRoute() async {
