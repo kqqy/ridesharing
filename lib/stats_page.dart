@@ -43,9 +43,10 @@ class _StatsPageState extends State<StatsPage> {
       // 1️⃣ 計算司機行程次數
       final driverData = await supabase
           .from('trip_members')
-          .select('id')
+          .select('id, trips!inner(status)')
           .eq('user_id', userId)
-          .eq('role', 'driver');
+          .eq('role', 'driver')
+          .eq('trips.status', 'completed');
 
       final driverCount = driverData.length;
       debugPrint('✅ 司機行程次數: $driverCount');
@@ -53,9 +54,10 @@ class _StatsPageState extends State<StatsPage> {
       // 2️⃣ 計算乘客行程次數（包含 creator）
       final passengerData = await supabase
           .from('trip_members')
-          .select('id')
+          .select('id, trips!inner(status)')
           .eq('user_id', userId)
-          .or('role.eq.passenger,role.eq.creator');
+          .or('role.eq.passenger,role.eq.creator')
+          .eq('trips.status', 'completed');
 
       final passengerCount = passengerData.length;
       debugPrint('✅ 乘客行程次數: $passengerCount');
