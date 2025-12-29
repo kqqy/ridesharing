@@ -856,6 +856,7 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                             showDialog(
                               context: context,
                               builder: (_) => MemberProfileDialog(
+                                userId: request['user_id'],
                                 name: request['name'],
                                 rating: request['rating'] as double,
                                 violationCount: request['violation'] as int,
@@ -961,6 +962,7 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
 // 4️⃣ MemberProfileDialog
 // ==========================================
 class MemberProfileDialog extends StatelessWidget {
+  final String userId;
   final String name;
   final double rating;
   final int violationCount;
@@ -968,6 +970,7 @@ class MemberProfileDialog extends StatelessWidget {
 
   const MemberProfileDialog({
     super.key,
+    required this.userId,
     required this.name,
     required this.rating,
     required this.violationCount,
@@ -1037,7 +1040,7 @@ class MemberProfileDialog extends StatelessWidget {
             child: TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const StatsPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (context) => StatsPage(userId: userId)));
               },
               child: const Text(
                 '詳細資料',
