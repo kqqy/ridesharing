@@ -22,11 +22,19 @@ class Trip {
 
   /// ⭐ 從 Supabase 回傳的 Map 建立 Trip
   factory Trip.fromMap(Map<String, dynamic> map) {
+    // 確保解析時處理 UTC 字串並轉為本地時區
+    String timeStr = map['depart_time'];
+    // 如果字串沒有時區資訊（無 Z 且無 +），強制視為 UTC
+    if (!timeStr.endsWith('Z') && !timeStr.contains('+')) {
+      timeStr += 'Z';
+    }
+    
+    final dt = DateTime.parse(timeStr);
     return Trip(
       id: map['id'] as String,
       origin: map['origin'] as String,
       destination: map['destination'] as String,
-      departTime: DateTime.parse(map['depart_time']),
+      departTime: dt.toLocal(), // 強制轉為手機當地時間
       seatsTotal: map['seats_total'] as int,
       seatsLeft: map['seats_left'] as int,
       status: map['status'] as String,
