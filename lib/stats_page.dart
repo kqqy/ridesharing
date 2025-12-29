@@ -5,7 +5,12 @@ import 'stats_widgets.dart'; // 引入通用 UI
 final supabase = Supabase.instance.client;
 
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key});
+  final String? userId;
+
+  const StatsPage({
+    super.key,
+    this.userId,
+  });
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -25,7 +30,7 @@ class _StatsPageState extends State<StatsPage> {
   }
   Future<void> _fetchStats() async {
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = widget.userId ?? supabase.auth.currentUser?.id;
       if (userId == null) {
         debugPrint('❌ 用戶未登入');
         return;
