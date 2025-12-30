@@ -80,6 +80,14 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
     super.dispose();
   }
 
+  String _normalizeAddress(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return t;
+    // 如果沒有包含「台灣」或「Taiwan」，就加上去，提高定位準確度
+    final hasTaiwan = t.contains('台灣') || t.toLowerCase().contains('taiwan');
+    return hasTaiwan ? t : '$t, 台灣';
+  }
+
   Future<void> _loadTripAndBuild() async {
     setState(() => _loading = true);
 
@@ -92,11 +100,12 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
 
       final trip = Trip.fromMap(tripData);
 
-      final origin = trip.origin.trim();
-      final destination = trip.destination.trim();
+      // ✅ 使用正規化方法，避免定位跑到國外
+      final origin = _normalizeAddress(trip.origin);
+      final destination = _normalizeAddress(trip.destination);
 
-      if (origin == null || origin.isEmpty || destination == null || destination.isEmpty) {
-        throw '此行程缺少出發地或目的地（trips.origin / trips.destination）';
+      if (origin.isEmpty || destination.isEmpty) {
+        throw '此行程缺少出發地或目的地';
       }
 
       _originText = origin;
