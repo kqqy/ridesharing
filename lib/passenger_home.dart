@@ -57,7 +57,7 @@ class _PassengerHomeState extends State<PassengerHome> {
           .from('trips')
           .select('''
           *,
-          trip_members(count)
+          trip_members(*)
         ''')
           .eq('status', 'open');
 
@@ -82,7 +82,7 @@ class _PassengerHomeState extends State<PassengerHome> {
 
       final trips = (data as List).map((e) {
         final seatsTotal = e['seats_total'] ?? 0;
-        final memberCount = (e['trip_members']?[0]?['count'] ?? 0) as int;
+        final memberCount = (e['trip_members'] as List<dynamic>?)?.length ?? 0;
         final seatsLeft = seatsTotal - memberCount;
 
         return Trip(
@@ -94,6 +94,10 @@ class _PassengerHomeState extends State<PassengerHome> {
           seatsLeft: seatsLeft,
           status: (e['status'] ?? '') as String,
           note: (e['note'] ?? '') as String,
+          tripMembers: (e['trip_members'] as List<dynamic>?)
+                  ?.map((m) => m as Map<String, dynamic>)
+                  .toList() ??
+              [],
         );
       }).toList();
 
@@ -235,12 +239,12 @@ class _PassengerHomeState extends State<PassengerHome> {
       // 2️⃣ ✅ 再次確認座位（避免競態條件）
       final tripData = await supabase
           .from('trips')
-          .select('creator_id, seats_total, trip_members(count)')
+          .select('creator_id, seats_total, trip_members(*)')
           .eq('id', trip.id)
           .single();
 
       final seatsTotal = tripData['seats_total'] as int;
-      final memberCount = (tripData['trip_members']?[0]?['count'] ?? 0) as int;
+      final memberCount = (tripData['trip_members'] as List<dynamic>?)?.length ?? 0;
       final seatsLeft = seatsTotal - memberCount;
 
       if (seatsLeft <= 0) {

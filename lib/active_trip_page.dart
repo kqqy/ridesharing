@@ -123,28 +123,26 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
     ).then((_) => timer?.cancel());
   }
 
-  // ===============================
-  // 結束行程 → 評價頁
-  // ===============================
-  void _handleArrived() {
+  Future<void> _handleArrived() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
     showDialog(
       context: context,
-      builder: (dialogContext) => AlertDialog(  // ✅ 改名避免混淆
+      builder: (dialogContext) => AlertDialog(
         title: const Text('確認到達？'),
-        content: const Text('確認後將進入評價頁面'),
+        content: const Text('確認後將標記您已到達，並在所有成員到達後進入評價頁面。'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),  // ✅ 使用 dialogContext
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('取消'),
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(dialogContext); // ✅ 關閉確認對話框
+              Navigator.pop(dialogContext); // 關閉確認對話框
 
-              // ✅ 檢查是否還 mounted
               if (!mounted) return;
 
-              // 顯示 Loading
               showDialog(
                 context: context,
                 barrierDismissible: false,
@@ -152,42 +150,61 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
               );
 
               try {
-                debugPrint('========================================');
-                debugPrint('✅ 開始更新行程狀態為 completed');
-                debugPrint('trip_id: ${widget.tripId}');
-
-                // 更新行程狀態
+                // 1. 更新當前使用者的 has_arrived 狀態
                 await supabase
-                    .from('trips')
-                    .update({'status': 'completed'})
-                    .eq('id', widget.tripId);
+                    .from('trip_members')
+                    .update({'has_arrived': true})
+                    .eq('trip_id', widget.tripId)
+                    .eq('user_id', user.id);
 
-                debugPrint('✅ 行程狀態更新成功');
-                debugPrint('========================================');
+                debugPrint('✅ 使用者 ${user.id} 已標記為到達');
+
+                // 2. 檢查是否所有成員都已到達
+                final allMembers = await supabase
+                    .from('trip_members')
+                    .select('user_id, has_arrived')
+                    .eq('trip_id', widget.tripId);
+
+                bool allArrived = true;
+                for (var member in allMembers) {
+                  if (!(member['has_arrived'] as bool? ?? false)) {
+                    allArrived = false;
+                    break;
+                  }
+                }
+
+                if (allArrived) {
+                  debugPrint('✅ 所有成員都已到達，更新行程狀態為 completed');
+                  await supabase
+                      .from('trips')
+                      .update({'status': 'completed'})
+                      .eq('id', widget.tripId);
+                  debugPrint('✅ 行程狀態更新成功');
+                } else {
+                  debugPrint('⚠️ 仍有成員未到達，行程狀態維持不變');
+                }
 
                 if (!mounted) return;
-                Navigator.pop(context); // ✅ 關閉 Loading
+                Navigator.pop(context); // 關閉 Loading
 
                 if (!mounted) return;
 
-                // ✅ 進入評價頁面
+                // 無論其他成員是否到達，當前使用者都進入評價頁面
                 debugPrint('🎯 導航到評價頁面，tripId: ${widget.tripId}');
-
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
                     builder: (_) => RatingPage(tripId: widget.tripId),
                   ),
                 );
-
               } catch (e, stackTrace) {
                 debugPrint('========================================');
-                debugPrint('❌ 更新狀態失敗: $e');
+                debugPrint('❌ 操作失敗: $e');
                 debugPrint('Stack trace: $stackTrace');
                 debugPrint('========================================');
 
                 if (!mounted) return;
-                Navigator.pop(context); // ✅ 關閉 Loading
+                Navigator.pop(context); // 關閉 Loading
 
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(

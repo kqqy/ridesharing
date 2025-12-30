@@ -8,6 +8,7 @@ class Trip {
   final int seatsLeft;       // 剩餘座位
   final String status;       // open / started / finished
   final String note;         // 備註
+  final List<Map<String, dynamic>> tripMembers; // 行程成員
 
   Trip({
     required this.id,
@@ -18,6 +19,7 @@ class Trip {
     required this.seatsLeft,
     required this.status,
     required this.note,
+    required this.tripMembers,
   });
 
   /// ⭐ 從 Supabase 回傳的 Map 建立 Trip
@@ -39,6 +41,10 @@ class Trip {
       seatsLeft: map['seats_left'] as int,
       status: map['status'] as String,
       note: map['note'] ?? '',
+      tripMembers: (map['trip_members'] as List<dynamic>?)
+              ?.map((e) => e as Map<String, dynamic>)
+              .toList() ??
+          [],
     );
   }
 

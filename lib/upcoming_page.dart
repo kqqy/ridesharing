@@ -48,7 +48,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
           role, 
           trips!inner(
             *,
-            trip_members(count)
+            trip_members(*)
           )
         ''')
           .eq('user_id', user.id);
@@ -66,7 +66,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
         roleMap[id] = row['role'] as String;
 
         // ✅ 計算座位
-        final memberCount = (trip['trip_members']?[0]?['count'] ?? 0) as int;
+        final memberCount = (trip['trip_members'] as List<dynamic>?)?.length ?? 0;
         final seatsTotal = (trip['seats_total'] ?? 0) as int;
         final seatsLeft = seatsTotal - memberCount;
 
@@ -87,6 +87,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
             seatsLeft: seatsLeft,  // ✅ 計算出來的
             status: status,
             note: (trip['note'] ?? '') as String,
+            tripMembers: (trip['trip_members'] as List<dynamic>?)
+                    ?.map((e) => e as Map<String, dynamic>)
+                    .toList() ??
+                [],
           ),
         );
       }
@@ -229,6 +233,14 @@ class _UpcomingPageState extends State<UpcomingPage> {
                  debugPrint('已記錄使用者 ${entry.key} 未到達違規');
               }
             }
+
+            // 更新行程狀態為 'started'
+            await supabase
+                .from('trips')
+                .update({'status': 'started'})
+                .eq('id', trip.id);
+
+            debugPrint('✅ 行程狀態已更新為 started');
 
             // 進入進行中頁面
             if (mounted) {

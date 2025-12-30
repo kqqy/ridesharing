@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // [新增]
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async'; // [新增] 引入 Timer
 import 'setting.dart';
-import 'driver_home.dart';    
-import 'passenger_home.dart'; 
+import 'driver_home.dart';
+import 'passenger_home.dart';
+import 'active_trip_page.dart'; // [新增]
+import 'trip_model.dart'; // [新增]
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,14 +15,103 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final supabase = Supabase.instance.client; // [新增] Supabase client
+  final supabase = Supabase.instance.client;
 
-  // ==========================================
-  //  邏輯控制部分 (Logic)
-  // ==========================================
-  
-  bool isDriver = false; // false=乘客, true=司機
-  bool isLoading = false; // [新增] Loading 狀態
+  bool isDriver = false;
+  bool isLoading = false;
+
+  StreamSubscription<List<Map<String, dynamic>>>? _tripSubscription; // [新增] Realtime subscription
+
+  @override
+  void initState() {
+    super.initState();
+    _setupTripListener(); // [新增] 設定行程監聽器
+  }
+
+  @override
+  void dispose() {
+    _tripSubscription?.cancel(); // [新增] 取消監聽
+    super.dispose();
+  }
+
+  // [新增] 設定 Supabase Realtime 監聽器
+  void _setupTripListener() {
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) return;
+
+    _tripSubscription = supabase
+        .from('trips')
+        .on(
+          PostgresChangeEvent.update,
+          (payload) {
+            if (!mounted) return;
+
+            final newStatus = payload.newRecord['status'] as String?;
+            final tripId = payload.newRecord['id'] as String;
+
+            if (newStatus == 'started') {
+              debugPrint('Realtime: Trip $tripId status changed to started');
+
+              // 檢查當前使用者是否是該行程的成員
+              // 這裡直接檢查 widget.trip.tripMembers 是否包含當前用戶 ID，
+              // 但由於這裡沒有 Trip 物件，所以需要額外查詢 trip_members 表
+              _checkAndNavigateIfMember(tripId, currentUser.id);
+            } else if (newStatus == 'completed') {
+              // TODO: Handle navigation to RatingPage when trip is completed
+              debugPrint('Realtime: Trip $tripId status changed to completed');
+              _checkAndNavigateToRatingIfMember(tripId, currentUser.id);
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _checkAndNavigateIfMember(String tripId, String userId) async {
+    // 檢查當前使用者是否是該行程的成員
+    final member = await supabase
+        .from('trip_members')
+        .select('user_id')
+        .eq('trip_id', tripId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (member != null) {
+      debugPrint('Realtime: Current user is a member of trip $tripId. Navigating to ActiveTripPage.');
+
+      // 檢查是否已經在 ActiveTripPage 上，避免重複導航
+      // 可以通過檢查路由棧來實現，但最簡單的方式是確保上下文是有效的
+      if (mounted) {
+        // 導航到 ActiveTripPage
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActiveTripPage(tripId: tripId),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _checkAndNavigateToRatingIfMember(String tripId, String userId) async {
+    final member = await supabase
+        .from('trip_members')
+        .select('user_id')
+        .eq('trip_id', tripId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (member != null) {
+      debugPrint('Realtime: Current user is a member of trip $tripId. Navigating to RatingPage.');
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => RatingPage(tripId: tripId),
+          ),
+        );
+      }
+    }
+  }
 
   // 處理切換身分的邏輯
   Future<void> _handleSwitchRole() async {

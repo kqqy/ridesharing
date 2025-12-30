@@ -460,57 +460,76 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
   @override
   void initState() {
     super.initState();
-    _loadMembers();
+    _loadMemberDetails();
   }
 
-  Future<void> _loadMembers() async {
+  Future<void> _loadMemberDetails() async {
+    final userIds = widget.trip.tripMembers.map((m) => m['user_id'] as String).toList();
+    if (userIds.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
     try {
-      final data = await supabase
-          .from('trip_members')
-          .select('user_id, role, users!trip_members_user_id_fkey(nickname)')
-          .eq('trip_id', widget.trip.id);
+      // Fetch nicknames
+      final usersData = await supabase
+          .from('users')
+          .select('id, nickname')
+          .inFilter('id', userIds);
+      final nicknameMap = { for (var user in usersData) user['id']: user['nickname'] };
+
+      // Fetch ratings
+      final ratingsData = await supabase
+          .from('ratings')
+          .select('to_user, rating')
+          .inFilter('to_user', userIds);
+      final userRatingsMap = <String, List<int>>{};
+      for (var r in ratingsData) {
+        userRatingsMap.putIfAbsent(r['to_user'], () => []).add(r['rating'] as int);
+      }
+
+      // Fetch violations
+      final suspensionsData = await supabase
+          .from('suspensions')
+          .select('user_id, violation_count')
+          .inFilter('user_id', userIds);
+      final violationsMap = { for (var s in suspensionsData) s['user_id']: s['violation_count'] };
 
       final members = <Map<String, dynamic>>[];
+      for (var member in widget.trip.tripMembers) {
+        final userId = member['user_id'] as String;
+        final role = member['role'] as String;
+        final nickname = nicknameMap[userId] ?? '未知';
 
-      for (final m in data) {
-        final ratings = await supabase
-            .from('ratings')
-            .select('rating')
-            .eq('to_user', m['user_id']);
-
-        final avg = ratings.isEmpty
+        final userRatings = userRatingsMap[userId] ?? [];
+        final avgRating = userRatings.isEmpty
             ? 5.0
-            : ratings.fold<int>(0, (p, r) => p + (r['rating'] as int)) / ratings.length;
-
-        // ✅ 查詢違規次數
-        final suspension = await supabase
-            .from('suspensions')
-            .select('violation_count')
-            .eq('user_id', m['user_id'])
-            .maybeSingle();
-        final vCount = (suspension?['violation_count'] as int?) ?? 0;
+            : userRatings.reduce((a, b) => a + b) / userRatings.length;
+        
+        final violationCount = violationsMap[userId] ?? 0;
 
         members.add({
-          'name': (m['users']?['nickname'] ?? '未知').toString(),
-          'role': m['role'] == 'creator'
+          'name': nickname,
+          'role': role == 'creator'
               ? '創建者'
-              : m['role'] == 'driver'
+              : role == 'driver'
                   ? '司機'
                   : '乘客',
-          'rating': avg,
-          'violation': vCount,
+          'rating': avgRating,
+          'violation': violationCount,
         });
       }
 
-      if (!mounted) return;
-      setState(() {
-        _members = members;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _members = members;
+          _loading = false;
+        });
+      }
+
     } catch (e) {
-      debugPrint('load members failed: $e');
-      if (!mounted) return;
-      setState(() => _loading = false);
+      debugPrint('load member details failed: $e');
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -556,6 +575,8 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
                           const SizedBox(height: 20),
 
                           _section('成員列表'),
+                          if (_members.isEmpty)
+                            const Text('目前沒有其他成員', style: TextStyle(color: Colors.grey)),
                           ..._members.map(_memberCard),
                         ],
                       ),

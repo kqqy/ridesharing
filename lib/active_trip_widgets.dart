@@ -82,14 +82,16 @@ class _ActiveTripBodyState extends State<ActiveTripBody> {
     setState(() => _loading = true);
 
     try {
-      final trip = await supabase
+      final tripData = await supabase
           .from('trips')
-          .select('origin, destination')
+          .select('*, trip_members(*)')
           .eq('id', widget.tripId)
           .single();
 
-      final origin = (trip['origin'] as String?)?.trim();
-      final destination = (trip['destination'] as String?)?.trim();
+      final trip = Trip.fromMap(tripData);
+
+      final origin = trip.origin.trim();
+      final destination = trip.destination.trim();
 
       if (origin == null || origin.isEmpty || destination == null || destination.isEmpty) {
         throw '此行程缺少出發地或目的地（trips.origin / trips.destination）';
