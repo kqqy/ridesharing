@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -25,10 +26,100 @@ class _UpcomingPageState extends State<UpcomingPage> {
   Map<String, String> _roleMap = {};
   bool _loading = true;
 
+  // ✅ Realtime 訂閱
+  RealtimeChannel? _tripsChannel;
+
   @override
   void initState() {
     super.initState();
     _fetchUpcomingTrips();
+    _subscribeToTripChanges();
+  }
+
+  @override
+  void dispose() {
+    // ✅ 取消訂閱
+    _tripsChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  /// ✅ 訂閱行程狀態變化
+  void _subscribeToTripChanges() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    _tripsChannel = supabase.channel('trips_status_changes');
+
+    _tripsChannel!
+        .onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'trips',
+      callback: (payload) {
+        _handleTripUpdate(payload.newRecord);
+      },
+    )
+        .subscribe();
+
+    debugPrint('✅ 已訂閱行程狀態變化');
+  }
+
+  /// ✅ 處理行程更新事件
+  void _handleTripUpdate(Map<String, dynamic> updatedTrip) {
+    final tripId = updatedTrip['id']?.toString();
+    final newStatus = updatedTrip['status'] as String?;
+
+    if (tripId == null || newStatus == null) return;
+
+    debugPrint('📡 收到行程更新: tripId=$tripId, status=$newStatus');
+
+    // 檢查是否是我參與的行程
+    final isMyTrip = _upcomingTrips.any((t) => t.id == tripId);
+
+    if (!isMyTrip) {
+      debugPrint('此行程不在我的列表中，忽略');
+      return;
+    }
+
+    // ✅ 如果狀態變成 "started"，自動導航到出發頁面
+    if (newStatus == 'started') {
+      debugPrint('🚗 行程已出發！自動導航到 ActiveTripPage');
+
+      if (mounted) {
+        // 顯示提示
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🚗 行程已出發！'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // 導航到出發頁面
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ActiveTripPage(tripId: tripId),
+          ),
+        );
+      }
+    }
+    // ✅ 如果狀態變成 "cancelled"，顯示提示並刷新
+    else if (newStatus == 'cancelled') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ 此行程已被取消'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        _fetchUpcomingTrips();
+      }
+    }
+    // ✅ 其他狀態變化，刷新列表
+    else {
+      _fetchUpcomingTrips();
+    }
   }
 
   Future<void> _fetchUpcomingTrips() async {
@@ -77,7 +168,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
             destination: (trip['destination'] ?? '') as String,
             departTime: DateTime.parse(trip['depart_time'] as String),
             seatsTotal: seatsTotal,
-            seatsLeft: seatsLeft,  // ✅ 計算出來的
+            seatsLeft: seatsLeft,
             status: status,
             note: (trip['note'] ?? '') as String,
           ),
@@ -213,17 +304,30 @@ class _UpcomingPageState extends State<UpcomingPage> {
             // 處理未到達的違規
             for (var entry in statusMap.entries) {
               if (entry.value == 2) { // 2 = 未到達
-                 await _violationService.recordViolation(
-                   userId: entry.key, 
-                   tripId: trip.id, 
-                   violationType: 'no_show',
-                   reason: '行程出發時被標記為未到達',
-                 );
-                 debugPrint('已記錄使用者 ${entry.key} 未到達違規');
+                await _violationService.recordViolation(
+                  userId: entry.key,
+                  tripId: trip.id,
+                  violationType: 'no_show',
+                  reason: '行程出發時被標記為未到達',
+                );
+                debugPrint('已記錄使用者 ${entry.key} 未到達違規');
               }
             }
 
-            // 進入進行中頁面
+            // ✅ 更新行程狀態為 "started"
+            // 這會觸發 Realtime，通知所有成員
+            try {
+              await supabase
+                  .from('trips')
+                  .update({'status': 'started'})
+                  .eq('id', trip.id);
+
+              debugPrint('✅ 已更新行程狀態為 started');
+            } catch (e) {
+              debugPrint('更新行程狀態失敗: $e');
+            }
+
+            // 進入進行中頁面（創建者自己）
             if (mounted) {
               Navigator.push(
                 context,
@@ -265,7 +369,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     if (willViolate) {
       // ⚠️ 顯示違規警告視窗
       final consequence = await _violationService.predictConsequence(user.id);
-      
+
       if (!mounted) return;
 
       confirmed = await showDialog<bool>(
@@ -400,7 +504,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return  Scaffold(
+      return Scaffold(
         appBar: AppBar(
           title: Text('即將出發'),
           leading: BackButton(),
