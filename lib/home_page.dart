@@ -51,9 +51,14 @@ class _HomePageState extends State<HomePage> {
           table: 'trips',
           callback: (payload) {
             if (!mounted) return;
+            
+            debugPrint('Realtime Event Received: ${payload.toString()}'); // [新增]
+            debugPrint('New Record: ${payload.newRecord}'); // [新增]
 
             final newStatus = payload.newRecord['status'] as String?;
             final tripId = payload.newRecord['id'] as String;
+            
+            debugPrint('Trip ID: $tripId, New Status: $newStatus'); // [新增]
 
             if (newStatus == 'started') {
               debugPrint('Realtime: Trip $tripId status changed to started');
@@ -64,7 +69,12 @@ class _HomePageState extends State<HomePage> {
             }
           },
         )
-        .subscribe();
+        .subscribe((status, error) {
+          debugPrint('Realtime Channel Status: $status'); // [新增] 監聽連線狀態
+          if (error != null) {
+            debugPrint('Realtime Channel Error: $error');
+          }
+        });
   }
 
   Future<void> _checkAndNavigateIfMember(String tripId, String userId) async {

@@ -204,11 +204,20 @@ class _ActiveTripPageState extends State<ActiveTripPage> {
                 debugPrint('========================================');
 
                 if (!mounted) return;
-                Navigator.pop(context); // 關閉 Loading
+                Navigator.pop(context); // ✅ 關閉 Loading
+
+                String errorMsg = '操作失敗：$e';
+                if (e.toString().contains('column "has_arrived" does not exist')) {
+                  errorMsg = '資料庫錯誤：缺少 has_arrived 欄位。請聯絡開發者更新資料庫。';
+                }
 
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('操作失敗：$e')),
+                  SnackBar(
+                    content: Text(errorMsg),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 5),
+                  ),
                 );
               }
             },
