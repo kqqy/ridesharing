@@ -11,6 +11,8 @@ import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
 
+import 'trip_model.dart'; // [新增]
+
 class ActiveTripBody extends StatefulWidget {
   final VoidCallback onSOS;
   final VoidCallback onArrived;

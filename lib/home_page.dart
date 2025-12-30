@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:async'; // [新增] 引入 Timer
+import 'dart:async'; 
 import 'setting.dart';
 import 'driver_home.dart';
 import 'passenger_home.dart';
-import 'active_trip_page.dart'; // [新增]
-import 'trip_model.dart'; // [新增]
+import 'active_trip_page.dart'; 
+import 'trip_model.dart'; 
+import 'rating_page.dart'; // [新增]
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,30 +21,35 @@ class _HomePageState extends State<HomePage> {
   bool isDriver = false;
   bool isLoading = false;
 
-  StreamSubscription<List<Map<String, dynamic>>>? _tripSubscription; // [新增] Realtime subscription
+  RealtimeChannel? _tripChannel; // [修改] 使用 RealtimeChannel
 
   @override
   void initState() {
     super.initState();
-    _setupTripListener(); // [新增] 設定行程監聽器
+    _setupTripListener(); 
   }
 
   @override
   void dispose() {
-    _tripSubscription?.cancel(); // [新增] 取消監聽
+    if (_tripChannel != null) {
+      supabase.removeChannel(_tripChannel!); // [修改] 正確移除 Channel
+    }
     super.dispose();
   }
 
-  // [新增] 設定 Supabase Realtime 監聽器
+  // [修改] 使用正確的 channel API 監聽
   void _setupTripListener() {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return;
 
-    _tripSubscription = supabase
-        .from('trips')
-        .on(
-          PostgresChangeEvent.update,
-          (payload) {
+    _tripChannel = supabase.channel('public:trips');
+    
+    _tripChannel!
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'trips',
+          callback: (payload) {
             if (!mounted) return;
 
             final newStatus = payload.newRecord['status'] as String?;
@@ -51,13 +57,8 @@ class _HomePageState extends State<HomePage> {
 
             if (newStatus == 'started') {
               debugPrint('Realtime: Trip $tripId status changed to started');
-
-              // 檢查當前使用者是否是該行程的成員
-              // 這裡直接檢查 widget.trip.tripMembers 是否包含當前用戶 ID，
-              // 但由於這裡沒有 Trip 物件，所以需要額外查詢 trip_members 表
               _checkAndNavigateIfMember(tripId, currentUser.id);
             } else if (newStatus == 'completed') {
-              // TODO: Handle navigation to RatingPage when trip is completed
               debugPrint('Realtime: Trip $tripId status changed to completed');
               _checkAndNavigateToRatingIfMember(tripId, currentUser.id);
             }
