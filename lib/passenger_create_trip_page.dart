@@ -132,7 +132,7 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
         'creator_id': creatorId,
         'origin': origin,
         'destination': destination,
-        'depart_time': departTime.toIso8601String(),
+        'depart_time': departTime.toUtc().toIso8601String(),
         'seats_total': seatsTotal,
         'seats_left': seatsTotal - 1, // 建立者佔 1 位
         'status': 'open',
@@ -156,7 +156,7 @@ class _PassengerCreateTripPageState extends State<PassengerCreateTripPage> {
         'trip_id': tripId,
         'user_id': creatorId,
         'role': 'creator',
-        'join_time': DateTime.now().toIso8601String(),
+        'join_time': DateTime.now().toUtc().toIso8601String(),
       });
 
       if (!mounted) return;

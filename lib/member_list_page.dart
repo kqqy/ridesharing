@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'stats_page.dart';
 
 final supabase = Supabase.instance.client;
 
@@ -40,12 +41,13 @@ class _MemberListPageState extends State<MemberListPage> {
         debugPrint('角色: $role');
 
         // 1️⃣ 查詢違規次數
-        final violationsData = await supabase
-            .from('violations')
-            .select('id')
-            .eq('user_id', userId);
+        final suspensionData = await supabase
+            .from('suspensions')
+            .select('violation_count')
+            .eq('user_id', userId)
+            .maybeSingle();
 
-        final violationCount = violationsData.length;
+        final violationCount = (suspensionData?['violation_count'] as int?) ?? 0;
 
         // 2️⃣ 查詢評價
         final ratingsData = await supabase
@@ -270,121 +272,156 @@ class MemberDetailDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 標題
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  member['name'],
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                // 標題
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    member['name'],
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('關閉'),
-                ),
-              ],
-            ),
-            const Divider(),
-            const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 16),
 
-            // 違規次數
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  '違規次數',
-                  style: TextStyle(fontSize: 16),
+                // 違規次數
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '違規次數',
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    Text(
+                      '$violationCount 次',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: violationCount > 0 ? Colors.red : Colors.green,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  '$violationCount 次',
+                const SizedBox(height: 20),
+
+                // 平均評價
+                const Text(
+                  '平均評價',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
-                    color: violationCount > 0 ? Colors.red : Colors.green,
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // 星星顯示
+                if (ratingCount > 0) ...[
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      if (index < averageRating.floor()) {
+                        return const Icon(
+                          Icons.star,
+                          color: Colors.amber,
+                          size: 32,
+                        );
+                      } else if (index < averageRating.ceil() &&
+                          averageRating % 1 != 0) {
+                        return const Icon(
+                          Icons.star_half,
+                          color: Colors.amber,
+                          size: 32,
+                        );
+                      } else {
+                        return const Icon(
+                          Icons.star_border,
+                          color: Colors.amber,
+                          size: 32,
+                        );
+                      }
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    averageRating.toStringAsFixed(1),
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  Text(
+                    '共 $ratingCount 則評價',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ] else ...[
+                  const Icon(
+                    Icons.star_border,
+                    size: 48,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '尚無評價',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 20),
+                const Divider(),
+
+                // 底部關閉按鈕
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('關閉'),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
+          ),
 
-            // 平均評價
-            const Text(
-              '平均評價',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
+          // 右上角詳細資料按鈕
+          Positioned(
+            top: 10,
+            right: 10,
+            child: TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => StatsPage(userId: member['user_id']),
+                  ),
+                );
+              },
+              child: const Text(
+                '詳細資料',
+                style: TextStyle(
+                  color: Colors.blue,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-            const SizedBox(height: 12),
-
-            // 星星顯示
-            if (ratingCount > 0) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (index) {
-                  if (index < averageRating.floor()) {
-                    return const Icon(
-                      Icons.star,
-                      color: Colors.amber,
-                      size: 32,
-                    );
-                  } else if (index < averageRating.ceil() &&
-                      averageRating % 1 != 0) {
-                    return const Icon(
-                      Icons.star_half,
-                      color: Colors.amber,
-                      size: 32,
-                    );
-                  } else {
-                    return const Icon(
-                      Icons.star_border,
-                      color: Colors.amber,
-                      size: 32,
-                    );
-                  }
-                }),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                averageRating.toStringAsFixed(1),
-                style: const TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange,
-                ),
-              ),
-              Text(
-                '共 $ratingCount 則評價',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
-                ),
-              ),
-            ] else ...[
-              const Icon(
-                Icons.star_border,
-                size: 48,
-                color: Colors.grey,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '尚無評價',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

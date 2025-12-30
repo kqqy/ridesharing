@@ -7,15 +7,26 @@ class ViolationService {
   /// 檢查司機取消行程是否違規 (< 6小時)
   bool isDriverCancelViolation(DateTime departTime) {
     final now = DateTime.now();
-    final difference = departTime.difference(now).inHours;
-    return difference < 6;
+    // 統一轉為 Local 進行比較，並使用分鐘計算以提高精確度
+    final departLocal = departTime.toLocal();
+    final differenceInMinutes = departLocal.difference(now).inMinutes;
+
+    debugPrint('👮 違規檢查 (司機): 出發=$departLocal, 現在=$now, 剩餘=${differenceInMinutes}分');
+
+    // 6 小時 = 360 分鐘
+    return differenceInMinutes < 360;
   }
 
   /// 檢查乘客退出行程是否違規 (< 1小時)
   bool isPassengerLeaveViolation(DateTime departTime) {
     final now = DateTime.now();
-    final difference = departTime.difference(now).inHours;
-    return difference < 1;
+    final departLocal = departTime.toLocal();
+    final differenceInMinutes = departLocal.difference(now).inMinutes;
+
+    debugPrint('👮 違規檢查 (乘客): 出發=$departLocal, 現在=$now, 剩餘=${differenceInMinutes}分');
+
+    // 1 小時 = 60 分鐘
+    return differenceInMinutes < 60;
   }
 
   /// 預測下一次違規的後果

@@ -13,7 +13,7 @@ final supabase = Supabase.instance.client;
 // ==========================================
 // 1️⃣ UpcomingBody
 // ==========================================
-class UpcomingBody extends StatelessWidget {
+class UpcomingBody extends StatefulWidget {
   final bool isDriver;
   final List<Trip> upcomingTrips;
   final Map<String, String> roleMap;
@@ -34,30 +34,95 @@ class UpcomingBody extends StatelessWidget {
   });
 
   @override
+  State<UpcomingBody> createState() => _UpcomingBodyState();
+}
+
+class _UpcomingBodyState extends State<UpcomingBody> {
+  /// tripId -> 是否有加入申請
+  final Map<String, bool> _hasJoinRequests = {};
+  bool _loadingReq = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadJoinRequestFlags();
+  }
+
+  @override
+  void didUpdateWidget(covariant UpcomingBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // 如果行程清單變了，就重新查
+    if (oldWidget.upcomingTrips != widget.upcomingTrips) {
+      _loadJoinRequestFlags();
+    }
+  }
+
+  Future<void> _loadJoinRequestFlags() async {
+    if (widget.upcomingTrips.isEmpty) return;
+
+    setState(() => _loadingReq = true);
+
+    try {
+      final tripIds = widget.upcomingTrips.map((t) => t.id).toList();
+
+      // ✅ 一次查出這些 trip_id 有哪些出現在 join_requests
+      final rows = await supabase
+          .from('join_requests')
+          .select('trip_id')
+          .inFilter('trip_id', tripIds);
+
+      final idsWithReq = <String>{};
+      for (final r in rows) {
+        final id = (r['trip_id'] ?? '').toString();
+        if (id.isNotEmpty) idsWithReq.add(id);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _hasJoinRequests
+          ..clear()
+          ..addEntries(tripIds.map((id) => MapEntry(id, idsWithReq.contains(id))));
+        _loadingReq = false;
+      });
+    } catch (e) {
+      debugPrint('load join_requests flags failed: $e');
+      if (!mounted) return;
+      setState(() => _loadingReq = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (upcomingTrips.isEmpty) {
+    if (widget.upcomingTrips.isEmpty) {
       return _empty();
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(20),
-      itemCount: upcomingTrips.length,
+      itemCount: widget.upcomingTrips.length,
       itemBuilder: (context, index) {
-        final trip = upcomingTrips[index];
-        final role = roleMap[trip.id] ?? 'passenger';
+        final trip = widget.upcomingTrips[index];
+        final role = widget.roleMap[trip.id] ?? 'passenger';
         final isCreator = role == 'creator';
+
+        // ✅ 只有「有加入申請」才顯示紅點（而且通常只對創建者有意義）
+        final hasRedDot = isCreator && (_hasJoinRequests[trip.id] == true);
 
         final card = PassengerTripCard(
           trip: trip,
-          onDetailTap: () => onDetailTap(trip),
+          onDetailTap: () => widget.onDetailTap(trip),
           onJoin: null,
-          onChat: () => onChatTrip(trip),
+          onChat: () => widget.onChatTrip(trip),
           cancelText: isCreator ? '取消行程' : '離開',
-          onDepart: isCreator ? () => onDepartTrip?.call(trip) : null,
-          onCancel: () => onCancelTrip(trip),
-          hasNotification: isCreator,
+          onDepart: isCreator ? () => widget.onDepartTrip?.call(trip) : null,
+          onCancel: () => widget.onCancelTrip(trip),
+
+          // ✅ 只在有加入申請時顯示紅點
+          hasNotification: hasRedDot,
         );
 
+        // 你原本那行「此行程由您創建」是否要留？可以留，不影響紅點
         if (!isCreator) return card;
 
         return Stack(
@@ -75,6 +140,18 @@ class UpcomingBody extends StatelessWidget {
                 ),
               ),
             ),
+
+            // （可選）如果你想在查詢中顯示一個小 loading 點提示
+            if (_loadingReq)
+              const Positioned(
+                right: 10,
+                top: 10,
+                child: SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
           ],
         );
       },
@@ -95,6 +172,7 @@ class UpcomingBody extends StatelessWidget {
         ),
       );
 }
+
 
 // ==========================================
 // ✅ 2️⃣ MiniRouteMap（真的 GoogleMap，但禁止滑動/縮放）
@@ -367,6 +445,14 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
             ? 5.0
             : ratings.fold<int>(0, (p, r) => p + (r['rating'] as int)) / ratings.length;
 
+        // ✅ 查詢違規次數
+        final suspension = await supabase
+            .from('suspensions')
+            .select('violation_count')
+            .eq('user_id', m['user_id'])
+            .maybeSingle();
+        final vCount = (suspension?['violation_count'] as int?) ?? 0;
+
         members.add({
           'name': (m['users']?['nickname'] ?? '未知').toString(),
           'role': m['role'] == 'creator'
@@ -375,6 +461,7 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
                   ? '司機'
                   : '乘客',
           'rating': avg,
+          'violation': vCount,
         });
       }
 
@@ -484,6 +571,14 @@ class _PassengerTripDetailsDialogState extends State<PassengerTripDetailsDialog>
                 children: [
                   Text(m['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
                   Text(m['role'], style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '違規: ${m['violation']} 次',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: (m['violation'] as int) > 0 ? Colors.red : Colors.grey,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -561,9 +656,9 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
 
       // 4️⃣ ✅ 批次查詢違規（使用 or）
       final orConditionsViolation = userIds.map((id) => 'user_id.eq.$id').join(',');
-      final allViolations = await supabase
-          .from('violations')
-          .select('user_id, id')
+      final allSuspensions = await supabase
+          .from('suspensions')
+          .select('user_id, violation_count')
           .or(orConditionsViolation);
 
       // 5️⃣ 整理成 Map
@@ -575,9 +670,9 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
       }
 
       final violationsMap = <String, int>{};
-      for (var violation in allViolations) {
-        final userId = violation['user_id'] as String;
-        violationsMap[userId] = (violationsMap[userId] ?? 0) + 1;
+      for (var suspension in allSuspensions) {
+        final userId = suspension['user_id'] as String;
+        violationsMap[userId] = (suspension['violation_count'] as int?) ?? 0;
       }
 
       // 6️⃣ 組合最終結果
@@ -756,14 +851,27 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                     ),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          backgroundColor: isDriver
-                              ? Colors.blue[100] // ✅ 司機用藍色
-                              : Colors.orange[100],
-                          child: Icon(
-                            isDriver ? Icons.drive_eta : Icons.person,
-                            // ✅ 司機用車子圖示
-                            color: isDriver ? Colors.blue : Colors.orange,
+                        InkWell(
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => MemberProfileDialog(
+                                userId: request['user_id'],
+                                name: request['name'],
+                                rating: request['rating'] as double,
+                                violationCount: request['violation'] as int,
+                              ),
+                            );
+                          },
+                          child: CircleAvatar(
+                            backgroundColor: isDriver
+                                ? Colors.blue[100] // ✅ 司機用藍色
+                                : Colors.orange[100],
+                            child: Icon(
+                              isDriver ? Icons.drive_eta : Icons.person,
+                              // ✅ 司機用車子圖示
+                              color: isDriver ? Colors.blue : Colors.orange,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -803,28 +911,28 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
                               ),
                               Row(
                                 children: [
-                                  const Icon(Icons.star,
-                                      size: 14, color: Colors.amber),
+                                  const Icon(Icons.star, size: 14, color: Colors.amber),
                                   const SizedBox(width: 2),
                                   Text(
-                                    request['rating']
-                                        .toStringAsFixed(1),
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey),
+                                    (request['rating'] as double).toStringAsFixed(1),
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                                   ),
                                   const SizedBox(width: 12),
-                                  Text(
-                                    '違規: ${request['violation']} 次',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: request['violation'] > 0
-                                          ? Colors.red
-                                          : Colors.grey,
+
+                                  // ✅ 關鍵：讓「違規」這段在空間不足時自動縮/省略
+                                  Expanded(
+                                    child: Text(
+                                      '違規: ${request['violation']} 次',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: request['violation'] > 0 ? Colors.red : Colors.grey,
+                                      ),
                                     ),
                                   ),
                                 ],
-                              ),
+                              )
                             ],
                           ),
                         ),
@@ -854,6 +962,7 @@ class _JoinRequestsDialogState extends State<JoinRequestsDialog> {
 // 4️⃣ MemberProfileDialog
 // ==========================================
 class MemberProfileDialog extends StatelessWidget {
+  final String userId;
   final String name;
   final double rating;
   final int violationCount;
@@ -861,10 +970,11 @@ class MemberProfileDialog extends StatelessWidget {
 
   const MemberProfileDialog({
     super.key,
+    required this.userId,
     required this.name,
     required this.rating,
     required this.violationCount,
-    required this.noShowCount,
+    this.noShowCount = 0,
   });
 
   @override
@@ -930,7 +1040,7 @@ class MemberProfileDialog extends StatelessWidget {
             child: TextButton(
               onPressed: () {
                 Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const StatsPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (context) => StatsPage(userId: userId)));
               },
               child: const Text(
                 '詳細資料',

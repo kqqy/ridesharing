@@ -107,10 +107,20 @@ class _HistoryPageState extends State<HistoryPage> {
           displayStatus = tripData['status'];
         }
 
+        // ✅ 處理時間與時區
+        String timeStr = tripData['depart_time'] as String;
+        if (!timeStr.endsWith('Z') && !timeStr.contains('+')) {
+          timeStr += 'Z';
+        }
+        final departDateTime = DateTime.parse(timeStr).toLocal();
+        
+        final dateStr = "${departDateTime.year}-${departDateTime.month.toString().padLeft(2, '0')}-${departDateTime.day.toString().padLeft(2, '0')}";
+        final timeStrFormatted = "${departDateTime.hour.toString().padLeft(2, '0')}:${departDateTime.minute.toString().padLeft(2, '0')}";
+
         history.add({
           'trip_id': tripId,  // ✅ 加上 trip_id
-          'date': (tripData['depart_time'] as String).substring(0, 10),
-          'time': (tripData['depart_time'] as String).substring(11, 16),
+          'date': dateStr,
+          'time': timeStrFormatted,
           'origin': tripData['origin'] ?? '',
           'destination': tripData['destination'] ?? '',
           'members_list': membersList,  // ✅ 所有成員

@@ -161,12 +161,19 @@ class _UpcomingPageState extends State<UpcomingPage> {
         final seatsTotal = (trip['seats_total'] ?? 0) as int;
         final seatsLeft = seatsTotal - memberCount;
 
+        // ✅ 修正時間解析邏輯 (同 Trip.fromMap)
+        String timeStr = trip['depart_time'] as String;
+        if (!timeStr.endsWith('Z') && !timeStr.contains('+')) {
+          timeStr += 'Z';
+        }
+        final departDateTime = DateTime.parse(timeStr).toLocal();
+
         trips.add(
           Trip(
             id: id,
             origin: (trip['origin'] ?? '') as String,
             destination: (trip['destination'] ?? '') as String,
-            departTime: DateTime.parse(trip['depart_time'] as String),
+            departTime: departDateTime, // ✅ 使用修正後的本地時間
             seatsTotal: seatsTotal,
             seatsLeft: seatsLeft,
             status: status,

@@ -5,7 +5,12 @@ import 'stats_widgets.dart'; // 引入通用 UI
 final supabase = Supabase.instance.client;
 
 class StatsPage extends StatefulWidget {
-  const StatsPage({super.key});
+  final String? userId;
+
+  const StatsPage({
+    super.key,
+    this.userId,
+  });
 
   @override
   State<StatsPage> createState() => _StatsPageState();
@@ -25,7 +30,7 @@ class _StatsPageState extends State<StatsPage> {
   }
   Future<void> _fetchStats() async {
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final userId = widget.userId ?? supabase.auth.currentUser?.id;
       if (userId == null) {
         debugPrint('❌ 用戶未登入');
         return;
@@ -38,9 +43,10 @@ class _StatsPageState extends State<StatsPage> {
       // 1️⃣ 計算司機行程次數
       final driverData = await supabase
           .from('trip_members')
-          .select('id')
+          .select('id, trips!inner(status)')
           .eq('user_id', userId)
-          .eq('role', 'driver');
+          .eq('role', 'driver')
+          .eq('trips.status', 'completed');
 
       final driverCount = driverData.length;
       debugPrint('✅ 司機行程次數: $driverCount');
@@ -48,9 +54,10 @@ class _StatsPageState extends State<StatsPage> {
       // 2️⃣ 計算乘客行程次數（包含 creator）
       final passengerData = await supabase
           .from('trip_members')
-          .select('id')
+          .select('id, trips!inner(status)')
           .eq('user_id', userId)
-          .or('role.eq.passenger,role.eq.creator');
+          .or('role.eq.passenger,role.eq.creator')
+          .eq('trips.status', 'completed');
 
       final passengerCount = passengerData.length;
       debugPrint('✅ 乘客行程次數: $passengerCount');
